@@ -7,7 +7,6 @@ GENOME_DIR = config["input_dir"]
 FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
 MINIMAP2_INDEX = REFERENCE + ".mmi"
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
-DEFAULT_THREADS = config.get("threads", 4)
 
 
 def resolve_sample_genome(sample):
@@ -66,8 +65,7 @@ rule align_sample:
         genome=lambda wc: resolve_sample_genome(wc.sample),
     output:
         bam=temp("results/alignment/{sample}.sorted.bam")
-    threads:
-        DEFAULT_THREADS
+    threads: 40
     params:
         preset=config.get("minimap2_preset", "asm5"),
     log:
@@ -103,8 +101,7 @@ rule call_variants:
         tbi="results/variants/raw_variants.vcf.gz.tbi",
     params:
         min_mapping_quality=config.get("variant_calling", {}).get("min_mapping_quality", 20),
-    threads:
-        DEFAULT_THREADS
+    threads: 40
     conda:
         "envs/variants.yaml"
     shell:
