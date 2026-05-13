@@ -1,0 +1,16 @@
+reference: "resources/reference/genome.fasta"
+input_dir: "resources/genomes"
+
+# Optional explicit sample list. If empty, samples are auto-discovered from
+# input_dir using files matching {sample}.fasta
+samples: []
+
+threads: 4
+
+variant_calling:
+  min_mapping_quality: 20
+  min_quality: 30
+
+plink:
+  ld_window: 99999
+  ld_window_kb: 1000
