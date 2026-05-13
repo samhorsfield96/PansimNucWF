@@ -1,7 +1,12 @@
+#!/usr/bin/env Rscript
+
 args <- commandArgs(trailingOnly = TRUE)
+full_args <- commandArgs(trailingOnly = FALSE)
+script_arg <- full_args[grep("^--file=", full_args)][1]
+script_name <- ifelse(is.na(script_arg), "script", basename(sub("^--file=", "", script_arg)))
 
 if (length(args) != 2) {
-  stop("Usage: Rscript <script> <input.vcf.gz> <output.tsv>")
+  stop(sprintf("Usage: Rscript %s <input.vcf.gz> <output.tsv>", script_name))
 }
 
 input_vcf <- args[[1]]
