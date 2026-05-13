@@ -7,6 +7,7 @@ GENOME_DIR = config["input_dir"]
 FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
 MINIMAP2_INDEX = REFERENCE + ".mmi"
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
+PLINK_PLOT_SCRIPT = "scripts/plink_ld_plots.R"
 OUTPUT_DIR = config["output_dir"]
 
 
@@ -45,7 +46,10 @@ rule all:
         f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz",
         f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
         f"{OUTPUT_DIR}/plink/ld_decay.ld",
+        f"{OUTPUT_DIR}/plink/ld_heatmap.pdf",
+        f"{OUTPUT_DIR}/plink/ld_decay_plot.pdf",
         f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
+        f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
 
 
 rule index_reference:
@@ -108,7 +112,7 @@ rule call_variants:
         (
             f"mkdir -p {OUTPUT_DIR}/variants && "
             f"bcftools mpileup -Ou -q {params.min_mapping_quality} -f {input.ref} {input.bams} | "
-            f"bcftools call -mv -Oz -o {output.vcf} && "
+            f"bcftools call -mv --ploidy 1 -Oz -o {output.vcf} && "
             f"tabix -p vcf {output.vcf}"
         )
 
@@ -152,14 +156,30 @@ rule plink_ld_decay:
         )
 
 
+rule plink_ld_plots:
+    input:
+        ld=f"{OUTPUT_DIR}/plink/ld_decay.ld",
+    output:
+        heatmap=f"{OUTPUT_DIR}/plink/ld_heatmap.pdf",
+        decay=f"{OUTPUT_DIR}/plink/ld_decay_plot.pdf",
+    params:
+        script=PLINK_PLOT_SCRIPT,
+        out_dir=f"{OUTPUT_DIR}/plink",
+    conda:
+        "envs/plink.yaml"
+    shell:
+        "Rscript {params.script} {input.ld} {params.out_dir}"
+
+
 rule pegas_haplotype_analysis:
     input:
         vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz"
     output:
-        f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv"
+        tsv=f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
+        pdf=f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
     params:
         script=PEGAS_SCRIPT
     conda:
         "envs/pegas.yaml"
     shell:
-        f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {params.script} {input.vcf} {output}"
+        f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{output.pdf}}"

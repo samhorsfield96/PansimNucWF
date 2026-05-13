@@ -4,3 +4,5 @@ channels:
   - defaults
 dependencies:
   - plink
+  - r-ggplot2
+  - r-dplyr
