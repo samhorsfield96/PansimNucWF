@@ -25,8 +25,8 @@ def resolve_sample_genome(sample):
 def discover_samples():
     discovered = []
     for extension in FASTA_EXTENSIONS:
-        pattern = Path(GENOME_DIR) / f"{{sample}}{extension}"
-        discovered.extend(glob_wildcards(str(pattern)).sample)
+        pattern = str(Path(GENOME_DIR) / "{sample}") + extension
+        discovered.extend(glob_wildcards(pattern).sample)
     return sorted(set(discovered))
 
 
