@@ -1,7 +1,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) != 2) {
-  stop("Usage: Rscript scripts/pegas_haplotype_analysis.R <input.vcf.gz> <output.tsv>")
+  stop("Usage: Rscript <path>/pegas_haplotype_analysis.R <input.vcf.gz> <output.tsv>")
 }
 
 input_vcf <- args[[1]]
@@ -25,10 +25,16 @@ loci_data <- as.loci(gt_df, allele.sep = "/")
 haps <- haplotype(loci_data)
 
 freq <- attr(haps, "freq")
+total_count <- sum(freq)
+
+if (total_count <= 0) {
+  stop("No haplotypes were inferred from the provided VCF genotypes.")
+}
+
 summary_df <- data.frame(
   haplotype = labels(haps),
   count = as.integer(freq),
-  frequency = as.numeric(freq) / sum(freq)
+  frequency = as.numeric(freq) / total_count
 )
 
 write.table(summary_df, output_tsv, sep = "\t", quote = FALSE, row.names = FALSE)

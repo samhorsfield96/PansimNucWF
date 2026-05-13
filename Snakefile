@@ -5,6 +5,7 @@ configfile: "config/config.yaml"
 REFERENCE = config["reference"]
 GENOME_DIR = config["input_dir"]
 BWA_INDEX_SUFFIXES = ["amb", "ann", "bwt", "pac", "sa"]
+PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
 
 if config.get("samples"):
     SAMPLES = config["samples"]
@@ -124,6 +125,6 @@ rule pegas_haplotype_analysis:
     output:
         "results/pegas/haplotype_summary.tsv"
     params:
-        script="scripts/pegas_haplotype_analysis.R"
+        script=PEGAS_SCRIPT
     shell:
         "mkdir -p results/pegas && Rscript {params.script} {input.vcf} {output}"
