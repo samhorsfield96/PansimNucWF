@@ -1,5 +1,6 @@
 reference: "resources/reference/genome.fasta"
 input_dir: "resources/genomes"
+fasta_extensions: [".fasta", ".fa", ".fna"]
 
 # Optional explicit sample list. If empty, samples are auto-discovered from
 # input_dir using files matching {sample}.fasta

@@ -4,7 +4,7 @@ configfile: "config/config.yaml"
 
 REFERENCE = config["reference"]
 GENOME_DIR = config["input_dir"]
-FASTA_EXTENSIONS = [".fasta", ".fa", ".fna"]
+FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
 BWA_INDEX_SUFFIXES = ["amb", "ann", "bwt", "pac", "sa"]
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
 DEFAULT_THREADS = config.get("threads", 4)
@@ -17,7 +17,8 @@ def resolve_sample_genome(sample):
             return str(candidate)
     raise ValueError(
         f"Could not find genome FASTA for sample '{sample}' in {GENOME_DIR} "
-        f"with extensions: {', '.join(FASTA_EXTENSIONS)}"
+        f"with extensions: {', '.join(FASTA_EXTENSIONS)}. "
+        f"Expected format: {{sample}}<extension> (e.g., {sample}.fasta)."
     )
 
 
