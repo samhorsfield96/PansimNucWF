@@ -20,10 +20,27 @@ This repository contains a Snakemake pipeline that:
 Configure paths and parameters in `config/config.yaml`.
 You can customize accepted sample FASTA suffixes with `fasta_extensions`.
 
+### Installation
+
+Install the required packages using [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)/[mamba](https://github.com/mamba-org/mamba):
+
+```
+git clone https://github.com/samhorsfield96/PansimNucWF.git
+cd PansimNucWF
+mamba env create -n PansimNucWF "snakemake>=9.19.0"
+mamba activate PansimNucWF
+```
+
 ### Run
 
 ```bash
-snakemake --cores 8 --use-conda
+snakemake --cores 8 --use-conda 
+```
+
+If using mamba, use
+
+```bash
+snakemake --cores 8 --use-conda --conda-frontend mamba
 ```
 
 Or dry-run:
