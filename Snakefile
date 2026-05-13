@@ -7,6 +7,7 @@ GENOME_DIR = config["input_dir"]
 FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
 MINIMAP2_INDEX = REFERENCE + ".mmi"
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
+OUTPUT_DIR = config["output_dir"]
 
 
 def resolve_sample_genome(sample):
@@ -25,14 +26,13 @@ def discover_samples():
     discovered = []
     for extension in FASTA_EXTENSIONS:
         pattern = str(Path(GENOME_DIR) / "{sample}") + extension
-        discovered.extend(glob_wildcards(pattern).sample)
+        # ignore reference file if it's in the same directory and matches the pattern
+        if pattern != REFERENCE:
+            discovered.extend(glob_wildcards(pattern).sample)
     return sorted(set(discovered))
 
 
-if config.get("samples"):
-    SAMPLES = config["samples"]
-else:
-    SAMPLES = discover_samples()
+SAMPLES = discover_samples()
 
 if not SAMPLES:
     raise ValueError(
@@ -42,10 +42,10 @@ if not SAMPLES:
 
 rule all:
     input:
-        "results/variants/filtered_variants.vcf.gz",
-        "results/variants/filtered_variants.vcf.gz.tbi",
-        "results/plink/ld_decay.ld",
-        "results/pegas/haplotype_summary.tsv",
+        f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz",
+        f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
+        f"{OUTPUT_DIR}/plink/ld_decay.ld",
+        f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
 
 
 rule index_reference:
@@ -64,17 +64,17 @@ rule align_sample:
         ref_index=MINIMAP2_INDEX,
         genome=lambda wc: resolve_sample_genome(wc.sample),
     output:
-        bam=temp("results/alignment/{sample}.sorted.bam")
+        bam=temp(f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam")
     threads: 40
     params:
         preset=config.get("minimap2_preset", "asm5"),
     log:
-        "results/logs/alignment/{sample}.log"
+        f"{OUTPUT_DIR}/logs/alignment/{{sample}}.log"
     conda:
         "envs/alignment.yaml"
     shell:
         (
-            "mkdir -p results/alignment results/logs/alignment && "
+            f"mkdir -p {OUTPUT_DIR}/alignment {OUTPUT_DIR}/logs/alignment && "
             "minimap2 -a -x {params.preset} -t {threads} {input.ref_index} {input.genome} 2> {log} | "
             "samtools sort -@ {threads} -o {output.bam}"
         )
@@ -82,9 +82,9 @@ rule align_sample:
 
 rule index_bam:
     input:
-        bam="results/alignment/{sample}.sorted.bam"
+        bam=f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam"
     output:
-        bai=temp("results/alignment/{sample}.sorted.bam.bai")
+        bai=temp(f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam.bai")
     conda:
         "envs/alignment.yaml"
     shell:
@@ -94,11 +94,11 @@ rule index_bam:
 rule call_variants:
     input:
         ref=REFERENCE,
-        bams=expand("results/alignment/{sample}.sorted.bam", sample=SAMPLES),
-        bais=expand("results/alignment/{sample}.sorted.bam.bai", sample=SAMPLES),
+        bams=expand(f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam", sample=SAMPLES),
+        bais=expand(f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam.bai", sample=SAMPLES),
     output:
-        vcf="results/variants/raw_variants.vcf.gz",
-        tbi="results/variants/raw_variants.vcf.gz.tbi",
+        vcf=f"{OUTPUT_DIR}/variants/raw_variants.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/raw_variants.vcf.gz.tbi",
     params:
         min_mapping_quality=config.get("variant_calling", {}).get("min_mapping_quality", 20),
     threads: 40
@@ -106,46 +106,46 @@ rule call_variants:
         "envs/variants.yaml"
     shell:
         (
-            "mkdir -p results/variants && "
-            "bcftools mpileup -Ou -q {params.min_mapping_quality} -f {input.ref} {input.bams} | "
-            "bcftools call -mv -Oz -o {output.vcf} && "
-            "tabix -p vcf {output.vcf}"
+            f"mkdir -p {OUTPUT_DIR}/variants && "
+            f"bcftools mpileup -Ou -q {params.min_mapping_quality} -f {input.ref} {input.bams} | "
+            f"bcftools call -mv -Oz -o {output.vcf} && "
+            f"tabix -p vcf {output.vcf}"
         )
 
 
 rule filter_variants:
     input:
-        vcf="results/variants/raw_variants.vcf.gz",
-        tbi="results/variants/raw_variants.vcf.gz.tbi",
+        vcf=f"{OUTPUT_DIR}/variants/raw_variants.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/raw_variants.vcf.gz.tbi",
     output:
-        vcf="results/variants/filtered_variants.vcf.gz",
-        tbi="results/variants/filtered_variants.vcf.gz.tbi",
+        vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
     params:
         min_quality=config.get("variant_calling", {}).get("min_quality", 30),
     conda:
         "envs/variants.yaml"
     shell:
         (
-            "bcftools filter -i 'QUAL>={params.min_quality}' -Oz -o {output.vcf} {input.vcf} && "
-            "tabix -p vcf {output.vcf}"
+            f"bcftools filter -i 'QUAL>={params.min_quality}' -Oz -o {output.vcf} {input.vcf} && "
+            f"tabix -p vcf {output.vcf}"
         )
 
 
 rule plink_ld_decay:
     input:
-        vcf="results/variants/filtered_variants.vcf.gz",
-        tbi="results/variants/filtered_variants.vcf.gz.tbi",
+        vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
     output:
-        "results/plink/ld_decay.ld"
+        f"{OUTPUT_DIR}/plink/ld_decay.ld"
     params:
-        out_prefix="results/plink/ld_decay",
+        out_prefix=f"{OUTPUT_DIR}/plink/ld_decay",
         ld_window=config.get("plink", {}).get("ld_window", 99999),
         ld_window_kb=config.get("plink", {}).get("ld_window_kb", 1000),
     conda:
         "envs/plink.yaml"
     shell:
         (
-            "mkdir -p results/plink && "
+            f"mkdir -p {OUTPUT_DIR}/plink && "
             "plink --vcf {input.vcf} --double-id --allow-extra-chr "
             "--r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
             "--ld-window-r2 0 --out {params.out_prefix}"
@@ -154,12 +154,12 @@ rule plink_ld_decay:
 
 rule pegas_haplotype_analysis:
     input:
-        vcf="results/variants/filtered_variants.vcf.gz"
+        vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz"
     output:
-        "results/pegas/haplotype_summary.tsv"
+        f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv"
     params:
         script=PEGAS_SCRIPT
     conda:
         "envs/pegas.yaml"
     shell:
-        "mkdir -p results/pegas && Rscript {params.script} {input.vcf} {output}"
+        f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {params.script} {input.vcf} {output}"
