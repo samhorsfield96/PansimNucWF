@@ -1,7 +1,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) != 2) {
-  stop("Usage: Rscript pegas_haplotype_analysis.R <input.vcf.gz> <output.tsv>")
+  stop("Usage: Rscript scripts/pegas_haplotype_analysis.R <input.vcf.gz> <output.tsv>")
 }
 
 input_vcf <- args[[1]]
@@ -20,7 +20,7 @@ if (is.null(dim(gt)) || ncol(gt) == 0 || nrow(gt) == 0) {
 }
 
 gt <- gsub("\\|", "/", gt)
-gt_df <- as.data.frame(t(gt), stringsAsFactors = TRUE)
+gt_df <- as.data.frame(t(gt))
 loci_data <- as.loci(gt_df, allele.sep = "/")
 haps <- haplotype(loci_data)
 

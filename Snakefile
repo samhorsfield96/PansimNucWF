@@ -4,6 +4,7 @@ configfile: "config/config.yaml"
 
 REFERENCE = config["reference"]
 GENOME_DIR = config["input_dir"]
+BWA_INDEX_SUFFIXES = ["amb", "ann", "bwt", "pac", "sa"]
 
 if config.get("samples"):
     SAMPLES = config["samples"]
@@ -28,7 +29,7 @@ rule index_reference:
     input:
         REFERENCE
     output:
-        expand("{ref}.{suffix}", ref=REFERENCE, suffix=["amb", "ann", "bwt", "pac", "sa"])
+        expand("{ref}.{suffix}", ref=REFERENCE, suffix=BWA_INDEX_SUFFIXES)
     shell:
         "bwa index {input}"
 
