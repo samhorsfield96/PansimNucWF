@@ -5,12 +5,13 @@ full_args <- commandArgs(trailingOnly = FALSE)
 script_arg <- full_args[grep("^--file=", full_args)][1]
 script_name <- ifelse(is.na(script_arg), "this_script.R", basename(sub("^--file=", "", script_arg)))
 
-if (length(args) != 2) {
-  stop(sprintf("Usage: Rscript %s <ld_decay.ld> <output_dir>", script_name))
+if (length(args) < 2 || length(args) > 3) {
+  stop(sprintf("Usage: Rscript %s <ld_decay.ld> <output_dir> [reference.fai]", script_name))
 }
 
-input_ld  <- args[[1]]
+input_ld   <- args[[1]]
 output_dir <- args[[2]]
+input_fai  <- if (length(args) == 3) args[[3]] else NULL
 
 suppressPackageStartupMessages({
   library(ggplot2)
@@ -31,6 +32,26 @@ ld <- ld |>
 
 chromosomes <- sort(unique(c(ld$CHR_A, ld$CHR_B)))
 
+# ── Chromosome lengths from .fai (cols: name, length, ...) ───────────────────
+if (!is.null(input_fai)) {
+  fai <- read.table(input_fai, header = FALSE, stringsAsFactors = FALSE,
+                    col.names = c("CHR", "length", "offset", "linebases", "linewidth"))
+  chr_limits <- fai |>
+    filter(CHR %in% chromosomes) |>
+    select(CHR, length)
+} else {
+  chr_limits <- data.frame(
+    CHR    = chromosomes,
+    length = tapply(c(ld$BP_A, ld$BP_B), c(ld$CHR_A, ld$CHR_B), max)[chromosomes]
+  )
+}
+
+# blank data to anchor each facet from 1 to chromosome length
+chr_blanks <- bind_rows(
+  chr_limits |> mutate(pos_x = 1L,      pos_y = 1L),
+  chr_limits |> mutate(pos_x = length,  pos_y = length)
+)
+
 # ── Heatmap: pairwise r² per chromosome ──────────────────────────────────────
 # Mirror A↔B so the heatmap is symmetric
 ld_sym <- bind_rows(
@@ -40,6 +61,7 @@ ld_sym <- bind_rows(
   filter(CHR %in% chromosomes)
 
 p_heat <- ggplot(ld_sym, aes(x = pos_x, y = pos_y, fill = R2)) +
+  geom_blank(data = chr_blanks, aes(x = pos_x, y = pos_y), inherit.aes = FALSE) +
   geom_tile() +
   facet_wrap(~CHR, scales = "free", ncol = 2) +
   scale_fill_gradientn(

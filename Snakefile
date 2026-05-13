@@ -6,6 +6,7 @@ REFERENCE = config["reference"]
 GENOME_DIR = config["input_dir"]
 FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
 MINIMAP2_INDEX = REFERENCE + ".mmi"
+REFERENCE_FAI  = REFERENCE + ".fai"
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
 PLINK_PLOT_SCRIPT = "scripts/plink_ld_plots.R"
 OUTPUT_DIR = config["output_dir"]
@@ -61,6 +62,17 @@ rule index_reference:
         "envs/alignment.yaml"
     shell:
         "minimap2 -d {output} {input}"
+
+
+rule faidx_reference:
+    input:
+        REFERENCE
+    output:
+        REFERENCE_FAI
+    conda:
+        "envs/alignment.yaml"
+    shell:
+        "samtools faidx {input}"
 
 
 rule align_sample:
@@ -159,6 +171,7 @@ rule plink_ld_decay:
 rule plink_ld_plots:
     input:
         ld=f"{OUTPUT_DIR}/plink/ld_decay.ld",
+        fai=REFERENCE_FAI,
     output:
         heatmap=f"{OUTPUT_DIR}/plink/ld_heatmap.pdf",
         decay=f"{OUTPUT_DIR}/plink/ld_decay_plot.pdf",
@@ -168,7 +181,7 @@ rule plink_ld_plots:
     conda:
         "envs/plink.yaml"
     shell:
-        "Rscript {params.script} {input.ld} {params.out_dir}"
+        "Rscript {params.script} {input.ld} {params.out_dir} {input.fai}"
 
 
 rule pegas_haplotype_analysis:

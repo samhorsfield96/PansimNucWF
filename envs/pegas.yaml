@@ -5,4 +5,5 @@ channels:
 dependencies:
   - r-base
   - r-vcfr
+  - r-ape
   - r-pegas
