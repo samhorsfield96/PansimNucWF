@@ -5,7 +5,7 @@ configfile: "config/config.yaml"
 REFERENCE = config["reference"]
 GENOME_DIR = config["input_dir"]
 FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
-BWA_INDEX_SUFFIXES = ["amb", "ann", "bwt", "pac", "sa"]
+MINIMAP2_INDEX = REFERENCE + ".mmi"
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
 DEFAULT_THREADS = config.get("threads", 4)
 
@@ -53,26 +53,31 @@ rule index_reference:
     input:
         REFERENCE
     output:
-        expand("{ref}.{suffix}", ref=REFERENCE, suffix=BWA_INDEX_SUFFIXES)
+        MINIMAP2_INDEX
+    conda:
+        "envs/alignment.yaml"
     shell:
-        "bwa index {input}"
+        "minimap2 -d {output} {input}"
 
 
 rule align_sample:
     input:
-        ref=REFERENCE,
-        ref_index=rules.index_reference.output,
+        ref_index=MINIMAP2_INDEX,
         genome=lambda wc: resolve_sample_genome(wc.sample),
     output:
         bam=temp("results/alignment/{sample}.sorted.bam")
     threads:
         DEFAULT_THREADS
+    params:
+        preset=config.get("minimap2_preset", "asm5"),
     log:
         "results/logs/alignment/{sample}.log"
+    conda:
+        "envs/alignment.yaml"
     shell:
         (
             "mkdir -p results/alignment results/logs/alignment && "
-            "bwa mem -t {threads} {input.ref} {input.genome} 2> {log} | "
+            "minimap2 -a -x {params.preset} -t {threads} {input.ref_index} {input.genome} 2> {log} | "
             "samtools sort -@ {threads} -o {output.bam}"
         )
 
@@ -82,6 +87,8 @@ rule index_bam:
         bam="results/alignment/{sample}.sorted.bam"
     output:
         bai=temp("results/alignment/{sample}.sorted.bam.bai")
+    conda:
+        "envs/alignment.yaml"
     shell:
         "samtools index {input.bam}"
 
@@ -98,6 +105,8 @@ rule call_variants:
         min_mapping_quality=config.get("variant_calling", {}).get("min_mapping_quality", 20),
     threads:
         DEFAULT_THREADS
+    conda:
+        "envs/variants.yaml"
     shell:
         (
             "mkdir -p results/variants && "
@@ -116,6 +125,8 @@ rule filter_variants:
         tbi="results/variants/filtered_variants.vcf.gz.tbi",
     params:
         min_quality=config.get("variant_calling", {}).get("min_quality", 30),
+    conda:
+        "envs/variants.yaml"
     shell:
         (
             "bcftools filter -i 'QUAL>={params.min_quality}' -Oz -o {output.vcf} {input.vcf} && "
@@ -133,6 +144,8 @@ rule plink_ld_decay:
         out_prefix="results/plink/ld_decay",
         ld_window=config.get("plink", {}).get("ld_window", 99999),
         ld_window_kb=config.get("plink", {}).get("ld_window_kb", 1000),
+    conda:
+        "envs/plink.yaml"
     shell:
         (
             "mkdir -p results/plink && "
@@ -149,5 +162,7 @@ rule pegas_haplotype_analysis:
         "results/pegas/haplotype_summary.tsv"
     params:
         script=PEGAS_SCRIPT
+    conda:
+        "envs/pegas.yaml"
     shell:
         "mkdir -p results/pegas && Rscript {params.script} {input.vcf} {output}"

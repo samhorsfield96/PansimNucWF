@@ -6,8 +6,8 @@ Workflows for analysis of PansimNuc simulated genomes.
 
 This repository contains a Snakemake pipeline that:
 
-1. Aligns many individual genome FASTA files to a reference (`bwa`, `samtools`)
-2. Calls joint variants across samples (`bcftools`)
+1. Aligns many individual genome FASTA files to a reference (`minimap2`)
+2. Calls joint variants across samples (`samtools`)
 3. Produces filtered VCF output for downstream analysis
 4. Runs LD-decay outputs with `PLINK`
 5. Runs haplotype summaries with `pegas` (R)
@@ -23,13 +23,13 @@ You can customize accepted sample FASTA suffixes with `fasta_extensions`.
 ### Run
 
 ```bash
-snakemake --cores 8
+snakemake --cores 8 --use-conda
 ```
 
 Or dry-run:
 
 ```bash
-snakemake -n
+snakemake -n --use-conda
 ```
 
 ### Main outputs
