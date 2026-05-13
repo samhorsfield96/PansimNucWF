@@ -6,6 +6,7 @@ REFERENCE = config["reference"]
 GENOME_DIR = config["input_dir"]
 BWA_INDEX_SUFFIXES = ["amb", "ann", "bwt", "pac", "sa"]
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
+DEFAULT_THREADS = config.get("threads", 4)
 
 if config.get("samples"):
     SAMPLES = config["samples"]
@@ -43,7 +44,7 @@ rule align_sample:
     output:
         bam=temp("results/alignment/{sample}.sorted.bam")
     threads:
-        config.get("threads", 4)
+        DEFAULT_THREADS
     log:
         "results/logs/alignment/{sample}.log"
     shell:
@@ -74,7 +75,7 @@ rule call_variants:
     params:
         min_mapping_quality=config.get("variant_calling", {}).get("min_mapping_quality", 20),
     threads:
-        config.get("threads", 4)
+        DEFAULT_THREADS
     shell:
         (
             "mkdir -p results/variants && "

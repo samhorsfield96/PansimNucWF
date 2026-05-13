@@ -1,7 +1,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) != 2) {
-  stop("Usage: Rscript <path>/pegas_haplotype_analysis.R <input.vcf.gz> <output.tsv>")
+  stop("Usage: Rscript pegas_haplotype_analysis.R <input.vcf.gz> <output.tsv>")
 }
 
 input_vcf <- args[[1]]
