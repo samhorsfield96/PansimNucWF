@@ -4,14 +4,35 @@ configfile: "config/config.yaml"
 
 REFERENCE = config["reference"]
 GENOME_DIR = config["input_dir"]
+FASTA_EXTENSIONS = [".fasta", ".fa", ".fna"]
 BWA_INDEX_SUFFIXES = ["amb", "ann", "bwt", "pac", "sa"]
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
 DEFAULT_THREADS = config.get("threads", 4)
 
+
+def resolve_sample_genome(sample):
+    for extension in FASTA_EXTENSIONS:
+        candidate = Path(GENOME_DIR) / f"{sample}{extension}"
+        if candidate.exists():
+            return str(candidate)
+    raise ValueError(
+        f"Could not find genome FASTA for sample '{sample}' in {GENOME_DIR} "
+        f"with extensions: {', '.join(FASTA_EXTENSIONS)}"
+    )
+
+
+def discover_samples():
+    discovered = []
+    for extension in FASTA_EXTENSIONS:
+        pattern = Path(GENOME_DIR) / f"{{sample}}{extension}"
+        discovered.extend(glob_wildcards(str(pattern)).sample)
+    return sorted(set(discovered))
+
+
 if config.get("samples"):
     SAMPLES = config["samples"]
 else:
-    SAMPLES = glob_wildcards(str(Path(GENOME_DIR) / "{sample}.fasta")).sample
+    SAMPLES = discover_samples()
 
 if not SAMPLES:
     raise ValueError(
@@ -40,7 +61,7 @@ rule align_sample:
     input:
         ref=REFERENCE,
         ref_index=rules.index_reference.output,
-        genome=lambda wc: str(Path(GENOME_DIR) / f"{wc.sample}.fasta"),
+        genome=lambda wc: resolve_sample_genome(wc.sample),
     output:
         bam=temp("results/alignment/{sample}.sorted.bam")
     threads:
@@ -59,7 +80,7 @@ rule index_bam:
     input:
         bam="results/alignment/{sample}.sorted.bam"
     output:
-        bai="results/alignment/{sample}.sorted.bam.bai"
+        bai=temp("results/alignment/{sample}.sorted.bam.bai")
     shell:
         "samtools index {input.bam}"
 

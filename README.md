@@ -15,7 +15,7 @@ This repository contains a Snakemake pipeline that:
 ### Expected inputs
 
 - Reference genome FASTA: `resources/reference/genome.fasta` (default; configurable)
-- Individual genome FASTA files named `{sample}.fasta` under `resources/genomes/` (default; configurable)
+- Individual genome FASTA files named `{sample}.fasta`, `{sample}.fa`, or `{sample}.fna` under `resources/genomes/` (default; configurable)
 
 Configure paths and parameters in `config/config.yaml`.
 
