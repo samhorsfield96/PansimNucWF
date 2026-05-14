@@ -153,6 +153,7 @@ rule plink_ld_decay:
         tbi=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
     output:
         f"{OUTPUT_DIR}/plink/ld_decay.ld"
+    threads: 40
     params:
         out_prefix=f"{OUTPUT_DIR}/plink/ld_decay",
         ld_window=config.get("plink", {}).get("ld_window", 99999),
@@ -162,7 +163,7 @@ rule plink_ld_decay:
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/plink && "
-            "plink --vcf {input.vcf} --double-id --allow-extra-chr "
+            "plink --threads {threads} --vcf {input.vcf} --double-id --allow-extra-chr --memory 8000 "
             "--r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
             "--ld-window-r2 0 --out {params.out_prefix}"
         )
