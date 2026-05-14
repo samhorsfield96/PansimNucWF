@@ -8,6 +8,7 @@ FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
 MINIMAP2_INDEX = REFERENCE + ".mmi"
 REFERENCE_FAI  = REFERENCE + ".fai"
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
+RECOMBINATION_THRESHOLD = config.get("pegas", {}).get("recombination_threshold", 0.9)
 PLINK_PLOT_SCRIPT = "scripts/plink_ld_plots.R"
 OUTPUT_DIR = config["output_dir"]
 
@@ -25,12 +26,14 @@ def resolve_sample_genome(sample):
 
 
 def discover_samples():
+    ref_resolved = str(Path(REFERENCE).resolve())
     discovered = []
     for extension in FASTA_EXTENSIONS:
         pattern = str(Path(GENOME_DIR) / "{sample}") + extension
-        # ignore reference file if it's in the same directory and matches the pattern
-        if pattern != REFERENCE:
-            discovered.extend(glob_wildcards(pattern).sample)
+        for s in glob_wildcards(pattern).sample:
+            candidate = str((Path(GENOME_DIR) / f"{s}{extension}").resolve())
+            if candidate != ref_resolved:
+                discovered.append(s)
     return sorted(set(discovered))
 
 
@@ -123,7 +126,7 @@ rule call_variants:
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/variants && "
-            f"bcftools mpileup -Ou -q {params.min_mapping_quality} -f {input.ref} {input.bams} | "
+            f"bcftools mpileup -Ou -B -Q 0 -q {params.min_mapping_quality} -f {input.ref} {input.bams} | "
             f"bcftools call -mv --ploidy 1 -Oz -o {output.vcf} && "
             f"tabix -p vcf {output.vcf}"
         )
@@ -164,7 +167,7 @@ rule plink_ld_decay:
         (
             f"mkdir -p {OUTPUT_DIR}/plink && "
             "plink --threads {threads} --vcf {input.vcf} --double-id --allow-extra-chr --memory 8000 "
-            "--r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
+            "--maf 0.01 --r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
             "--ld-window-r2 0 --out {params.out_prefix}"
         )
 
@@ -192,8 +195,9 @@ rule pegas_haplotype_analysis:
         tsv=f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
         pdf=f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
     params:
-        script=PEGAS_SCRIPT
+        script=PEGAS_SCRIPT,
+        recombination_threshold=RECOMBINATION_THRESHOLD
     conda:
         "envs/pegas.yaml"
     shell:
-        f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{output.pdf}}"
+        f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{output.pdf}} {params.recombination_threshold}"

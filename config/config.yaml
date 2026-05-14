@@ -7,9 +7,12 @@ fasta_extensions: [".fasta", ".fa", ".fna"]
 minimap2_preset: "asm5"
 
 variant_calling:
-  min_mapping_quality: 20
-  min_quality: 30
+  min_mapping_quality: 0
+  min_quality: 20
 
 plink:
   ld_window: 99999
   ld_window_kb: 1000
+
+pegas:
+  recombination_threshold: 0.9

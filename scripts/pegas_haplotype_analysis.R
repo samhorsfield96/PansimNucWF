@@ -5,13 +5,14 @@ full_args <- commandArgs(trailingOnly = FALSE)
 script_arg <- full_args[grep("^--file=", full_args)][1]
 script_name <- ifelse(is.na(script_arg), "this_script.R", basename(sub("^--file=", "", script_arg)))
 
-if (length(args) != 3) {
-  stop(sprintf("Usage: Rscript %s <input.vcf.gz> <output.tsv> <output.pdf>", script_name))
+if (length(args) < 3L) {
+  stop(sprintf("Usage: Rscript %s <input.vcf.gz> <output.tsv> <output.pdf> [recombination_threshold]", script_name))
 }
 
-input_vcf  <- args[[1]]
-output_tsv <- args[[2]]
-output_pdf <- args[[3]]
+input_vcf               <- args[[1L]]
+output_tsv              <- args[[2L]]
+output_pdf              <- args[[3L]]
+recombination_threshold <- if (length(args) >= 4L) as.numeric(args[[4L]]) else 0.9
 
 suppressPackageStartupMessages({
   library(vcfR)
@@ -83,8 +84,6 @@ summary_df <- data.frame(
   frequency = freq / total_haplotypes
 )
 
-write.table(summary_df, output_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
-
 # ── Haplotype network ─────────────────────────────────────────────────────────
 # Build a haplotype-class DNAbin object manually so haploNet() accepts it
 unique_row_idx <- match(unique_haps, hap_strings)
@@ -97,95 +96,80 @@ attr(hap_dnabin, "index") <- index
 
 net <- haploNet(hap_dnabin)
 
-# ── Recombination detection (four-gamete test + Hudson-Kaplan Rmin) ───────────
-# Four-gamete test: a pair of biallelic sites is incompatible when all four
-# two-locus gametes (00, 01, 10, 11) are observed, implying recombination
-# (or recurrent mutation) between them.
-four_gamete_test <- function(mat) {
-  n_sites <- ncol(mat)
-  ig <- matrix(FALSE, nrow = n_sites, ncol = n_sites)
-  for (i in seq_len(n_sites - 1L)) {
-    for (j in seq(i + 1L, n_sites)) {
-      if (length(unique(paste0(mat[, i], mat[, j]))) == 4L)
-        ig[i, j] <- ig[j, i] <- TRUE
-    }
-  }
-  ig
-}
-
-# Rmin (Hudson & Kaplan 1985): minimum recombination events via greedy
-# interval point cover — each incompatible pair [i,j] is an interval that
-# must be "hit" by at least one recombination event.
-rmin_estimate <- function(ig) {
-  pairs <- which(ig & upper.tri(ig), arr.ind = TRUE)
-  if (nrow(pairs) == 0L) return(0L)
-  pairs <- pairs[order(pairs[, 2L]), , drop = FALSE]
-  n_events <- 0L; last_point <- -1L
-  for (k in seq_len(nrow(pairs))) {
-    if (last_point < pairs[k, 1L]) {
-      n_events   <- n_events + 1L
-      last_point <- pairs[k, 2L]
-    }
-  }
-  n_events
-}
-
-ig             <- four_gamete_test(allele_mat)
-rmin           <- rmin_estimate(ig)
-n_incompatible <- sum(ig[upper.tri(ig)])
-
-message("Minimum recombination events (Rmin): ", rmin)
-message("Incompatible site pairs (four-gamete test): ", n_incompatible)
-
-# ── Plots (single PDF, one page per figure) ───────────────────────────────────
+# ── Recombination detection (profile-based) ───────────────────────────────────
+# For each haplotype build a mutation profile — a set of "pos:allele" tokens
+# for every site that carries a non-reference allele (GT != "0").  A haplotype
+# is flagged as recombinant when two others (potential parents) can be
+# identified: each parent must have >= recombination_threshold of its mutations
+# present in the candidate, and the two parents must each carry at least one
+# mutation the other lacks.
 
 # Haplotype allele matrix (rows = unique haplotypes, cols = sites)
 hap_alleles <- allele_mat[unique_row_idx, , drop = FALSE]
 
-# Build recombination annotations from the incompatibility matrix:
-#   recomb_node_set — haplotype indices carrying the minority (putative
-#                     recombinant) gamete at any incompatible site pair.
-#   recomb_arcs     — pairs of indices to connect with dashed arcs; each
-#                     recombinant node is linked to its closest neighbour
-#                     outside its gamete class.
-recomb_node_set <- integer(0)
-recomb_arcs     <- list()
-drawn_conn      <- matrix(FALSE, n_haps, n_haps)
+# Named list: haplotype label -> character vector of "pos:allele" mutation tokens
+# allele_mat contains raw GT allele indices ("0" = REF, "1", "2", ... = ALT)
+hap_profiles <- setNames(
+  lapply(seq_len(n_haps), function(i) {
+    hv  <- hap_alleles[i, ]
+    idx <- which(hv != "0" & !is.na(hv))
+    if (length(idx) == 0L) return(character(0L))
+    paste0(idx, ":", hv[idx])
+  }),
+  hap_labels
+)
 
-if (n_incompatible > 0L) {
-  inc_pairs <- which(ig & upper.tri(ig), arr.ind = TRUE)
-  for (k in seq_len(nrow(inc_pairs))) {
-    si <- inc_pairs[k, 1L]; sj <- inc_pairs[k, 2L]
-    gametes  <- paste0(hap_alleles[, si], hap_alleles[, sj])
-    gtab     <- sort(table(gametes))
-    rare_g   <- names(gtab)[1L]          # putative recombinant gamete
-    rare_idx <- which(gametes == rare_g)
-    recomb_node_set <- union(recomb_node_set, rare_idx)
-
-    # Parental gametes: each shares exactly one allele with the rare gamete.
-    # e.g. rare = "01"  →  parent A has "00" (gave allele at si),
-    #                        parent B has "11" (gave allele at sj).
-    g_split <- strsplit(rare_g, "")[[1L]]
-    a_si    <- g_split[1L]
-    a_sj    <- g_split[2L]
-    other_si <- setdiff(unique(substr(gametes, 1L, 1L)), a_si)[1L]
-    other_sj <- setdiff(unique(substr(gametes, 2L, 2L)), a_sj)[1L]
-    parent_A_g <- paste0(a_si,    other_sj)   # same allele at si
-    parent_B_g <- paste0(other_si, a_sj)      # same allele at sj
-
-    pA <- which(gametes == parent_A_g)
-    pB <- which(gametes == parent_B_g)
-    if (length(pA) == 0L || length(pB) == 0L) next
-
-    # Pick the most-frequent representative from each parental group
-    h1 <- pA[which.max(freq[pA])]
-    h2 <- pB[which.max(freq[pB])]
-    if (!drawn_conn[h1, h2]) {
-      drawn_conn[h1, h2] <- drawn_conn[h2, h1] <- TRUE
-      recomb_arcs <- c(recomb_arcs, list(c(h1, h2)))
+find_recombinant_parents <- function(profile_c, all_profiles_named, threshold = 0.9) {
+  if (threshold <= 0 || length(all_profiles_named) < 2L) return(NULL)
+  candidate_names <- Filter(
+    function(nm) {
+      a <- all_profiles_named[[nm]]
+      length(a) > 0L && (sum(a %in% profile_c) / length(a)) >= threshold
+    },
+    names(all_profiles_named)
+  )
+  if (length(candidate_names) < 2L) return(NULL)
+  n <- length(candidate_names)
+  for (i in seq_len(n - 1L)) {
+    a <- all_profiles_named[[candidate_names[i]]]
+    for (j in seq(i + 1L, n)) {
+      b <- all_profiles_named[[candidate_names[j]]]
+      if (!any(!a %in% b) || !any(!b %in% a)) next
+      return(c(candidate_names[i], candidate_names[j]))
     }
   }
+  NULL
 }
+
+# For each haplotype check all others as potential parents
+recomb_node_set      <- integer(0L)
+recomb_arcs          <- list()
+recomb_parent_labels <- vector("list", n_haps)   # index -> c(p1_label, p2_label)
+
+for (i in seq_len(n_haps)) {
+  others  <- hap_profiles[hap_labels[-i]]
+  parents <- find_recombinant_parents(hap_profiles[[i]], others,
+                                      threshold = recombination_threshold)
+  if (!is.null(parents)) {
+    recomb_node_set           <- union(recomb_node_set, i)
+    recomb_parent_labels[[i]] <- parents
+    p1 <- match(parents[1L], hap_labels)
+    p2 <- match(parents[2L], hap_labels)
+    recomb_arcs <- c(recomb_arcs, list(c(i, p1)), list(c(i, p2)))
+  }
+}
+
+n_recombinants <- length(recomb_node_set)
+message("Recombinant haplotypes detected: ", n_recombinants)
+
+# Add parents column to summary and write TSV
+summary_df$parents <- vapply(seq_len(n_haps), function(i) {
+  p <- recomb_parent_labels[[i]]
+  if (is.null(p)) NA_character_ else paste(p, collapse = ",")
+}, character(1L))
+write.table(summary_df, output_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
+
+# ── Plots (single PDF, one page per figure) ───────────────────────────────────
 
 node_bg                  <- rep("white", n_haps)
 node_bg[recomb_node_set] <- "tomato"
@@ -212,46 +196,30 @@ coords <- plot(
   bg            = node_bg,
   labels        = TRUE,
   show.mutation = 1,
-  main          = paste0("Haplotype network  (Rmin = ", rmin, ")")
+  main          = paste0("Haplotype network  (recombinants = ", n_recombinants, ")")
 )
-if (n_incompatible > 0L && isTRUE(nrow(coords) >= n_haps)) {
+if (n_recombinants > 0L && !is.null(coords)) {
+  coord_labels <- rownames(coords)
   for (pair in recomb_arcs) {
-    draw_arc(coords[pair[1L], 1L], coords[pair[1L], 2L],
-             coords[pair[2L], 1L], coords[pair[2L], 2L])
+    r1 <- match(hap_labels[pair[1L]], coord_labels)
+    r2 <- match(hap_labels[pair[2L]], coord_labels)
+    if (is.na(r1) || is.na(r2)) next
+    draw_arc(coords[r1, 1L], coords[r1, 2L],
+             coords[r2, 1L], coords[r2, 2L])
   }
 }
-legend(
-  "bottomright",
-  legend = c(paste0(hap_labels, " (n=", freq, ")"),
-             if (length(recomb_node_set) > 0L) "Putative recombinant" else NULL,
-             if (length(recomb_arcs)     > 0L) "Parental source pair" else NULL),
-  pch    = c(rep(21L, n_haps),
-             if (length(recomb_node_set) > 0L) 21L else NULL,
-             if (length(recomb_arcs)     > 0L) NA  else NULL),
-  lty    = c(rep(NA,  n_haps),
-             if (length(recomb_node_set) > 0L) NA else NULL,
-             if (length(recomb_arcs)     > 0L) 2L else NULL),
-  pt.bg  = c(node_bg,
-             if (length(recomb_node_set) > 0L) "tomato" else NULL,
-             if (length(recomb_arcs)     > 0L) NA       else NULL),
-  col    = c(rep("black", n_haps),
-             if (length(recomb_node_set) > 0L) "black" else NULL,
-             if (length(recomb_arcs)     > 0L) "red2"  else NULL),
-  bty    = "n",
-  cex    = 0.7
-)
 
-# Page 2: Four-gamete incompatibility matrix
-if (n_incompatible > 0L) {
-  image(
-    seq_len(ncol(ig)), seq_len(nrow(ig)), ig,
-    col  = c("white", "steelblue"),
-    xlab = "Site index", ylab = "Site index",
-    main = paste0("Four-gamete incompatibility  (Rmin = ", rmin, ")")
-  )
+# Page 2: Recombinant haplotype summary
+plot.new()
+title(main = paste0("Recombinant haplotypes  (threshold = ", recombination_threshold, ")"))
+if (n_recombinants == 0L) {
+  text(0.5, 0.5, "No recombinant haplotypes detected", cex = 1.2)
 } else {
-  plot.new()
-  title(main = paste0("Four-gamete incompatibility  (Rmin = ", rmin, ")"))
-  text(0.5, 0.5, "No incompatible site pairs detected", cex = 1.2)
+  lines_out <- vapply(recomb_node_set, function(i) {
+    parents <- recomb_parent_labels[[i]]
+    sprintf("%s  <-  %s + %s", hap_labels[i], parents[1L], parents[2L])
+  }, character(1L))
+  text(0.5, seq(0.9, 0.1, length.out = length(lines_out)),
+       lines_out, cex = 1.0)
 }
 invisible(dev.off())
