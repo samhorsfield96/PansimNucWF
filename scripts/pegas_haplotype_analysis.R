@@ -37,12 +37,11 @@ message("Variants: ", nrow(gt), "  Samples: ", ncol(gt))
 # gt is variants x samples; transpose to samples x variants
 allele_mat <- t(gt)
 
-# Drop samples with any missing allele
+# In a variant-only VCF, absence of a call means the sample carries the
+# reference allele ("0") — fill NA accordingly rather than discarding samples.
 n_missing <- rowSums(is.na(allele_mat))
-message("Samples with missing calls: ", sum(n_missing > 0), " / ", nrow(allele_mat))
-complete   <- n_missing == 0
-if (sum(complete) == 0) stop("All samples have missing genotypes at one or more sites.")
-allele_mat <- allele_mat[complete, , drop = FALSE]
+message("Samples with missing calls (treated as REF): ", sum(n_missing > 0), " / ", nrow(allele_mat))
+allele_mat[is.na(allele_mat)] <- "0"
 message("Samples retained: ", nrow(allele_mat))
 
 # Encode allele indices as distinct DNA bases for pegas
@@ -190,14 +189,23 @@ pdf(output_pdf, width = 8, height = 7)
 
 # Page 1: Haplotype network — coloured nodes + dashed arcs for recombination
 # plot.haploNet returns node coordinates invisibly (rows 1:n_haps = real haplotypes)
-coords <- plot(
-  net,
-  size          = sqrt(freq),
-  bg            = node_bg,
-  labels        = TRUE,
-  show.mutation = 1,
-  main          = paste0("Haplotype network  (recombinants = ", n_recombinants, ")")
-)
+if (n_haps <= 1L) {
+  plot.new()
+  title(main = "Haplotype network")
+  text(0.5, 0.5,
+       sprintf("Only %d unique haplotype — network cannot be drawn.", n_haps),
+       cex = 1.2)
+  coords <- NULL
+} else {
+  coords <- plot(
+    net,
+    size          = sqrt(freq),
+    bg            = node_bg,
+    labels        = TRUE,
+    show.mutation = 1,
+    main          = paste0("Haplotype network  (recombinants = ", n_recombinants, ")")
+  )
+}
 if (n_recombinants > 0L && !is.null(coords)) {
   coord_labels <- rownames(coords)
   for (pair in recomb_arcs) {
