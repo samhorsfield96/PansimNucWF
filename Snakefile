@@ -81,9 +81,10 @@ rule faidx_reference:
 rule align_sample:
     input:
         ref_index=MINIMAP2_INDEX,
+        ref=REFERENCE,
         genome=lambda wc: resolve_sample_genome(wc.sample),
     output:
-        bam=temp(f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam")
+        paf=f"{OUTPUT_DIR}/alignment/{{sample}}.paf.gz",
     threads: 40
     params:
         preset=config.get("minimap2_preset", "asm5"),
@@ -94,41 +95,44 @@ rule align_sample:
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/alignment {OUTPUT_DIR}/logs/alignment && "
-            "minimap2 -a -x {params.preset} -t {threads} {input.ref_index} {input.genome} 2> {log} | "
-            "samtools sort -@ {threads} -o {output.bam}"
+            "minimap2 -c --cs -x {params.preset} -t {threads} {input.ref_index} {input.genome} 2> {log} | "
+            "sort -k6,6 -k8,8n | bgzip > {output.paf}"
         )
 
 
-rule index_bam:
+rule call_variants_paftools:
     input:
-        bam=f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam"
+        paf=f"{OUTPUT_DIR}/alignment/{{sample}}.paf.gz",
+        ref=REFERENCE,
+        fai=REFERENCE_FAI,
     output:
-        bai=temp(f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam.bai")
+        vcf=f"{OUTPUT_DIR}/variants/per_sample/{{sample}}.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/per_sample/{{sample}}.vcf.gz.tbi",
     conda:
         "envs/alignment.yaml"
     shell:
-        "samtools index {input.bam}"
+        (
+            f"mkdir -p {OUTPUT_DIR}/variants/per_sample && "
+            "zcat {input.paf} | paftools.js call -s {wildcards.sample} -f {input.ref} - | "
+            "bgzip > {output.vcf} && "
+            "tabix -p vcf {output.vcf}"
+        )
 
 
-rule call_variants:
+rule merge_vcfs:
     input:
-        ref=REFERENCE,
-        bams=expand(f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam", sample=SAMPLES),
-        bais=expand(f"{OUTPUT_DIR}/alignment/{{sample}}.sorted.bam.bai", sample=SAMPLES),
+        vcfs=expand(f"{OUTPUT_DIR}/variants/per_sample/{{sample}}.vcf.gz", sample=SAMPLES),
+        tbis=expand(f"{OUTPUT_DIR}/variants/per_sample/{{sample}}.vcf.gz.tbi", sample=SAMPLES),
     output:
         vcf=f"{OUTPUT_DIR}/variants/raw_variants.vcf.gz",
         tbi=f"{OUTPUT_DIR}/variants/raw_variants.vcf.gz.tbi",
-    params:
-        min_mapping_quality=config.get("variant_calling", {}).get("min_mapping_quality", 20),
-    threads: 40
     conda:
         "envs/variants.yaml"
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/variants && "
-            f"bcftools mpileup -Ou -B -Q 0 -q {params.min_mapping_quality} -f {input.ref} {input.bams} | "
-            f"bcftools call -mv --ploidy 1 -Oz -o {output.vcf} && "
-            f"tabix -p vcf {output.vcf}"
+            "bcftools merge --force-samples -Oz -o {output.vcf} {input.vcfs} && "
+            "tabix -p vcf {output.vcf}"
         )
 
 
