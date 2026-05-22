@@ -113,7 +113,7 @@ rule call_variants_paftools:
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/variants/per_sample && "
-            "zcat {input.paf} | paftools.js call -s {wildcards.sample} -f {input.ref} - | "
+            "zcat {input.paf} | paftools.js call -l 1 -L 1 -s {wildcards.sample} -f {input.ref} - | "
             "bgzip > {output.vcf} && "
             "tabix -p vcf {output.vcf}"
         )
