@@ -170,8 +170,9 @@ rule plink_ld_decay:
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/plink && "
-            "plink --threads {threads} --vcf {input.vcf} --double-id --allow-extra-chr --memory 8000 "
-            "--maf 0.01 --r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
+            "bcftools +setGT {input.vcf} -- -t . -n 0 | "
+            "plink --threads {threads} --vcf /dev/stdin --double-id --allow-extra-chr --memory 8000 "
+            "--mac 1 --r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
             "--ld-window-r2 0 --out {params.out_prefix}"
         )
 
