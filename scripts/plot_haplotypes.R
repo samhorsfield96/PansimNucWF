@@ -56,7 +56,7 @@ if (!file.exists(genome_profiles_rds)) {
   mut_tokens <- paste(chrom, pos, alt, sep = ":")
 
   # Any non-ref, non-missing call is treated as carrying the alt allele
-  ref_gts <- c("0", "0/0", "0|0", "./.", ".|.", ".")
+  ref_gts <- c("0", "0/0", "0|0")
   has_alt  <- !is.na(gt_mat) & !gt_mat %in% ref_gts
 
   sample_names <- colnames(gt_mat)

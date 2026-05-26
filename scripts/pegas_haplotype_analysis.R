@@ -41,7 +41,6 @@ allele_mat <- t(gt)
 # reference allele ("0") — fill NA accordingly rather than discarding samples.
 n_missing <- rowSums(is.na(allele_mat))
 message("Samples with missing calls (treated as REF): ", sum(n_missing > 0), " / ", nrow(allele_mat))
-allele_mat[is.na(allele_mat)] <- "0"
 message("Samples retained: ", nrow(allele_mat))
 
 # Encode allele indices as distinct DNA bases for pegas
