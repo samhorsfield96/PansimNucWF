@@ -435,13 +435,13 @@ write.csv(hap_summary,
 
 # ── Filter to top N haplotypes per type (0 = keep all) ───────────────────────
 if (top_n > 0L) {
-  message(sprintf("Retaining top %d haplotype(s) per type by cumulative frequency change.", top_n))
+  message(sprintf("Retaining top %d haplotype(s) per type by peak frequency.", top_n))
   top_haps <- hap_data %>%
     arrange(population_id, haplotype_id, generation) %>%
     group_by(population_id, haplotype_id, type) %>%
-    summarise(total_change = sum(abs(diff(freq))), .groups = "drop") %>%
+    summarise(max_val = max(freq), .groups = "drop") %>%
     group_by(population_id, type) %>%
-    slice_max(total_change, n = top_n, with_ties = FALSE) %>%
+    slice_max(max_val, n = top_n, with_ties = FALSE) %>%
     ungroup()
 
   hap_data <- hap_data %>%

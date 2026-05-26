@@ -8,7 +8,7 @@ FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
 MINIMAP2_INDEX = REFERENCE + ".mmi"
 REFERENCE_FAI  = REFERENCE + ".fai"
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
-RECOMBINATION_THRESHOLD = config.get("pegas", {}).get("recombination_threshold", 0.9)
+RECOMBINATION_THRESHOLD = config.get("pegas_recombination_threshold", 0.9)
 PLINK_PLOT_SCRIPT = "scripts/plink_ld_plots.R"
 SFS_NUC_SCRIPT = "scripts/plot_sfs_nuc.R"
 OUTPUT_DIR = config["output_dir"]
@@ -148,7 +148,7 @@ rule filter_variants:
         vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz",
         tbi=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
     params:
-        min_quality=config.get("variant_calling", {}).get("min_quality", 30),
+        min_quality=config.get("variant_calling_min_quality", 30),
     conda:
         "envs/variants.yaml"
     shell:
@@ -185,8 +185,8 @@ rule plink_ld_decay:
     threads: 40
     params:
         out_prefix=f"{OUTPUT_DIR}/plink/ld_decay",
-        ld_window=config.get("plink", {}).get("ld_window", 99999),
-        ld_window_kb=config.get("plink", {}).get("ld_window_kb", 1000),
+        ld_window=config.get("plink_ld_window", 99999),
+        ld_window_kb=config.get("plink_ld_window_kb", 1000),
     conda:
         "envs/plink.yaml"
     shell:
