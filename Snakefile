@@ -14,15 +14,14 @@ SFS_NUC_SCRIPT = "scripts/plot_sfs_nuc.R"
 OUTPUT_DIR = config["output_dir"]
 
 IS_SIMULATED = config.get("simulated", False)
+DFE_CSV = f"{GENOME_DIR}/selection_samples.csv"
+HAS_DFE_CSV = IS_SIMULATED and Path(DFE_CSV).exists()
 
 if IS_SIMULATED:
     PLOT_HAPLOTYPES_SCRIPT = "scripts/plot_haplotypes.R"
     PLOT_TE_SCRIPT = "scripts/plot_te_copy_numbers.R"
     PLOT_SV_SCRIPT = "scripts/plot_sv.R"
     PLOT_DFE_SCRIPT = "scripts/print_DFEs.R"
-    SIM_GFF_DIR = config["sim_gff_dir"]
-    SIM_ROOT_GFF = config["sim_root_gff"]
-    SIM_DFE_CSV = config["sim_dfe_csv"]
     HAPLOTYPES_TOP_N = config.get("haplotypes_top_n", 5)
 
 
@@ -81,8 +80,8 @@ rule all:
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_mean_per_element.csv",
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_total_load.csv",
             f"{OUTPUT_DIR}/sv/sv_plot.pdf",
-            f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
         ] if IS_SIMULATED else []),
+        *([f"{OUTPUT_DIR}/dfe/dfe_plot.pdf"] if HAS_DFE_CSV else []),
 
 
 rule index_reference:
@@ -279,6 +278,9 @@ rule sfs_nuc_plot:
 if IS_SIMULATED:
 
     rule plot_haplotypes:
+        input:
+            vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz",
+            tbi=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz.tbi",
         output:
             summary=f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_summary.csv",
             freq_pdf=f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_freq.pdf",
@@ -287,7 +289,6 @@ if IS_SIMULATED:
             sel_pdf=f"{OUTPUT_DIR}/haplotypes/haplotypes_sel_coeff_composition.pdf",
         params:
             script=PLOT_HAPLOTYPES_SCRIPT,
-            gff_dir=GENOME_DIR,
             out_prefix=f"{OUTPUT_DIR}/haplotypes/haplotypes",
             top_n=HAPLOTYPES_TOP_N,
             recombination_threshold=RECOMBINATION_THRESHOLD,
@@ -296,7 +297,7 @@ if IS_SIMULATED:
         shell:
             (
                 f"mkdir -p {OUTPUT_DIR}/haplotypes && "
-                "Rscript {params.script} {params.gff_dir} {params.out_prefix} "
+                "Rscript {params.script} {input.vcf} {params.out_prefix} "
                 "{params.top_n} {params.recombination_threshold}"
             )
 
@@ -334,17 +335,19 @@ if IS_SIMULATED:
                 "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {params.out}"
             )
 
-    rule plot_dfe:
-        output:
-            pdf=f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
-        params:
-            script=PLOT_DFE_SCRIPT,
-            dfe_csv=f"{GENOME_DIR}/selection_samples.csv",
-            out_prefix=f"{OUTPUT_DIR}/dfe/dfe_plot",
-        conda:
-            "envs/simulated.yaml"
-        shell:
-            (
-                f"mkdir -p {OUTPUT_DIR}/dfe && "
-                "Rscript {params.script} {params.dfe_csv} {params.out_prefix}"
-            )
+    if HAS_DFE_CSV:
+
+        rule plot_dfe:
+            output:
+                pdf=f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
+            params:
+                script=PLOT_DFE_SCRIPT,
+                dfe_csv=DFE_CSV,
+                out_prefix=f"{OUTPUT_DIR}/dfe/dfe_plot",
+            conda:
+                "envs/simulated.yaml"
+            shell:
+                (
+                    f"mkdir -p {OUTPUT_DIR}/dfe && "
+                    "Rscript {params.script} {params.dfe_csv} {params.out_prefix}"
+                )

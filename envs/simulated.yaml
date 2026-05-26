@@ -13,3 +13,4 @@ dependencies:
   - r-scales
   - r-gggenomes
   - r-ggnewscale
+  - r-vcfr
