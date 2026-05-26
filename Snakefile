@@ -10,6 +10,7 @@ REFERENCE_FAI  = REFERENCE + ".fai"
 PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
 RECOMBINATION_THRESHOLD = config.get("pegas", {}).get("recombination_threshold", 0.9)
 PLINK_PLOT_SCRIPT = "scripts/plink_ld_plots.R"
+SFS_NUC_SCRIPT = "scripts/plot_sfs_nuc.R"
 OUTPUT_DIR = config["output_dir"]
 
 
@@ -54,6 +55,9 @@ rule all:
         f"{OUTPUT_DIR}/plink/ld_decay_plot.pdf",
         f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
         f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
+        f"{OUTPUT_DIR}/sfs/sfs_nuc_density_minor_alleles.pdf",
+        f"{OUTPUT_DIR}/sfs/sfs_nuc_density_all_alleles.pdf",
+        f"{OUTPUT_DIR}/sfs/sfs_nuc_sfs.csv",
 
 
 rule index_reference:
@@ -206,3 +210,25 @@ rule pegas_haplotype_analysis:
         "envs/pegas.yaml"
     shell:
         f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{output.pdf}} {params.recombination_threshold}"
+
+rule sfs_nuc_plot:
+    input:
+        vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
+    output:
+        minor_pdf=f"{OUTPUT_DIR}/sfs/sfs_nuc_density_minor_alleles.pdf",
+        both_pdf=f"{OUTPUT_DIR}/sfs/sfs_nuc_density_all_alleles.pdf",
+        csv=f"{OUTPUT_DIR}/sfs/sfs_nuc_sfs.csv",
+    params:
+        script=SFS_NUC_SCRIPT,
+        out_prefix=f"{OUTPUT_DIR}/sfs/sfs_nuc",
+        gff=config.get("reference_gff", ""),
+    conda:
+        "envs/sfs_nuc.yaml"
+    shell:
+        f"mkdir -p {OUTPUT_DIR}/sfs && "
+        "if [ -n \"{params.gff}\" ]; then "
+        "Rscript {params.script} {input.vcf} {params.gff} {params.out_prefix}; "
+        "else "
+        "Rscript {params.script} {input.vcf} {params.out_prefix}; "
+        "fi"
