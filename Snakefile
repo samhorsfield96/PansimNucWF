@@ -69,6 +69,7 @@ rule all:
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_minor_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_all_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_sfs.csv",
+        f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",
         *([  # simulation-specific outputs, only when simulated: true
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_summary.csv",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_freq.pdf",
@@ -274,6 +275,21 @@ rule sfs_nuc_plot:
         "Rscript {params.script} {input.vcf} {params.out_prefix}; "
         "fi"
 
+rule run_progressive_minimap2:
+    input:
+        reference=REFERENCE,
+        fasta_dir=GENOME_DIR,
+    output:
+        plot=f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",      
+    params:
+        minimap2_params=config.get("progressive_minimap2_params", "-ax asm5"),
+        output_dir=f"{OUTPUT_DIR}/synteny",
+        FASTA_EXTENSIONS=FASTA_EXTENSIONS,
+    threads: 40
+    conda:
+        "envs/synteny.yaml"
+    script:
+        "scripts/run_plotsr.py"
 
 if IS_SIMULATED:
 
