@@ -1,0 +1,12 @@
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - r-base
+  - r-vcfr
+  - r-dplyr
+  - r-ggplot2
+  - r-tidyr
+  - r-reshape2
+  - r-ggsci
+  - r-scales
