@@ -43,5 +43,4 @@ p_DFE <- ggplot(long_df, aes(x = Coefficient, y= after_stat(ndensity), fill = An
     axis.text.x = element_text(angle = 45, vjust = 0.5)
   ) 
 
-p_DFE
 ggsave(paste0(outpref, ".pdf"), plot=p_DFE, width=12, height=6)
