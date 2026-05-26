@@ -13,6 +13,18 @@ PLINK_PLOT_SCRIPT = "scripts/plink_ld_plots.R"
 SFS_NUC_SCRIPT = "scripts/plot_sfs_nuc.R"
 OUTPUT_DIR = config["output_dir"]
 
+IS_SIMULATED = config.get("simulated", False)
+
+if IS_SIMULATED:
+    PLOT_HAPLOTYPES_SCRIPT = "scripts/plot_haplotypes.R"
+    PLOT_TE_SCRIPT = "scripts/plot_te_copy_numbers.R"
+    PLOT_SV_SCRIPT = "scripts/plot_sv.R"
+    PLOT_DFE_SCRIPT = "scripts/print_DFEs.R"
+    SIM_GFF_DIR = config["sim_gff_dir"]
+    SIM_ROOT_GFF = config["sim_root_gff"]
+    SIM_DFE_CSV = config["sim_dfe_csv"]
+    HAPLOTYPES_TOP_N = config.get("haplotypes_top_n", 5)
+
 
 def resolve_sample_genome(sample):
     for extension in FASTA_EXTENSIONS:
@@ -58,6 +70,19 @@ rule all:
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_minor_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_all_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_sfs.csv",
+        *([  # simulation-specific outputs, only when simulated: true
+            f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_summary.csv",
+            f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_freq.pdf",
+            f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_composition.pdf",
+            f"{OUTPUT_DIR}/haplotypes/haplotypes_per_haplotype_composition.pdf",
+            f"{OUTPUT_DIR}/haplotypes/haplotypes_sel_coeff_composition.pdf",
+            f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_per_genome.csv",
+            f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_distribution.csv",
+            f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_mean_per_element.csv",
+            f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_total_load.csv",
+            f"{OUTPUT_DIR}/sv/sv_plot.pdf",
+            f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
+        ] if IS_SIMULATED else []),
 
 
 rule index_reference:
@@ -249,3 +274,77 @@ rule sfs_nuc_plot:
         "else "
         "Rscript {params.script} {input.vcf} {params.out_prefix}; "
         "fi"
+
+
+if IS_SIMULATED:
+
+    rule plot_haplotypes:
+        output:
+            summary=f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_summary.csv",
+            freq_pdf=f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_freq.pdf",
+            composition_pdf=f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_composition.pdf",
+            per_hap_pdf=f"{OUTPUT_DIR}/haplotypes/haplotypes_per_haplotype_composition.pdf",
+            sel_pdf=f"{OUTPUT_DIR}/haplotypes/haplotypes_sel_coeff_composition.pdf",
+        params:
+            script=PLOT_HAPLOTYPES_SCRIPT,
+            gff_dir=GENOME_DIR,
+            out_prefix=f"{OUTPUT_DIR}/haplotypes/haplotypes",
+            top_n=HAPLOTYPES_TOP_N,
+            recombination_threshold=RECOMBINATION_THRESHOLD,
+        conda:
+            "envs/simulated.yaml"
+        shell:
+            (
+                f"mkdir -p {OUTPUT_DIR}/haplotypes && "
+                "Rscript {params.script} {params.gff_dir} {params.out_prefix} "
+                "{params.top_n} {params.recombination_threshold}"
+            )
+
+    rule plot_te_copy_numbers:
+        output:
+            per_genome=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_per_genome.csv",
+            distribution=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_distribution.csv",
+            mean_per_element=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_mean_per_element.csv",
+            total_load=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_total_load.csv",
+        params:
+            script=PLOT_TE_SCRIPT,
+            gff_dir=GENOME_DIR,
+            out_prefix=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers",
+        conda:
+            "envs/simulated.yaml"
+        shell:
+            (
+                f"mkdir -p {OUTPUT_DIR}/te_copy_numbers && "
+                "Rscript {params.script} {params.gff_dir} {params.out_prefix}"
+            )
+
+    rule plot_sv:
+        output:
+            pdf=f"{OUTPUT_DIR}/sv/sv_plot.pdf",
+        params:
+            script=PLOT_SV_SCRIPT,
+            root_gff=f"{GENOME_DIR}/root.gff",
+            sim_dir=GENOME_DIR,
+            out=f"{OUTPUT_DIR}/sv/sv_plot.pdf",
+        conda:
+            "envs/simulated.yaml"
+        shell:
+            (
+                f"mkdir -p {OUTPUT_DIR}/sv && "
+                "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {params.out}"
+            )
+
+    rule plot_dfe:
+        output:
+            pdf=f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
+        params:
+            script=PLOT_DFE_SCRIPT,
+            dfe_csv=f"{GENOME_DIR}/selection_samples.csv",
+            out_prefix=f"{OUTPUT_DIR}/dfe/dfe_plot",
+        conda:
+            "envs/simulated.yaml"
+        shell:
+            (
+                f"mkdir -p {OUTPUT_DIR}/dfe && "
+                "Rscript {params.script} {params.dfe_csv} {params.out_prefix}"
+            )
