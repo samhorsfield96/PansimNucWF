@@ -55,6 +55,10 @@ get_gff_data <- function(gff_dir) {
   rows <- lapply(gff_files, function(gff_file) {
     base <- file_path_sans_ext(basename(gff_file))
     parsed <- parse_sample_name(base)
+    if (is.null(parsed)) {
+      # skip files with unparseable names, but warn if any found
+      return(NULL)
+    }
     con = file(gff_file, "r")
     while(TRUE) {
       line = readLines(con, n = 1)
