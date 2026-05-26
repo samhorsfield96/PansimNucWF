@@ -1,0 +1,17 @@
+[workspace]
+authors = ["Samuel Horsfield <samuel.horsfield@unine.ch>"]
+channels = ["conda-forge", "bioconda"]
+name = "PansimNucWF"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[activation]
+env = { OPENBLAS_NUM_THREADS = "1" }
+
+[tasks]
+
+[dependencies]
+conda = ">=26.3.2,<27"
+snakemake = ">=9.20.0,<10"
+bcftools = ">=1.23.1,<2"
+minimap2 = ">=2.31,<3"
