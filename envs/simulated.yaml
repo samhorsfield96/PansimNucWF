@@ -1,0 +1,15 @@
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - r-base
+  - r-ggplot2
+  - r-dplyr
+  - r-tidyr
+  - r-ggsci
+  - r-ggpattern
+  - r-stringr
+  - r-scales
+  - r-gggenomes
+  - r-ggnewscale
