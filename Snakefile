@@ -292,12 +292,13 @@ if IS_SIMULATED:
             out_prefix=f"{OUTPUT_DIR}/haplotypes/haplotypes",
             top_n=HAPLOTYPES_TOP_N,
             recombination_threshold=RECOMBINATION_THRESHOLD,
+            gff_dir=GENOME_DIR,
         conda:
             "envs/simulated.yaml"
         shell:
             (
                 f"mkdir -p {OUTPUT_DIR}/haplotypes && "
-                "Rscript {params.script} {input.vcf} {params.out_prefix} "
+                "Rscript {params.script} {input.vcf} {params.gff_dir} {params.out_prefix} "
                 "{params.top_n} {params.recombination_threshold}"
             )
 
