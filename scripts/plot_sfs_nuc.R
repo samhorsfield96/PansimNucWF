@@ -12,9 +12,6 @@ library(vcfR)
 # pop_<pop>_gen_<gen>_genome_<id>.  For each (population, generation) group,
 # computes per-site allele frequencies and plots the site frequency spectrum
 # (SFS) as a histogram.
-# If a GFF annotation file is provided, sites are grouped by the feature_type
-# of the overlapping element; otherwise all sites are labelled "all".
-#
 # args[2] is interpreted as a GFF file if it is an existing file path, and as
 # the output prefix otherwise (allowing the GFF to be omitted).
 
@@ -24,12 +21,7 @@ if (length(args) < 1L)
   stop("Usage: Rscript plot_sfs_nuc.R <vcf_file> [gff_annotation] [output_prefix]")
 
 vcf_file   <- args[1L]
-gff_file   <- if (length(args) >= 2L && nchar(args[2L]) > 0L && file.exists(args[2L])) args[2L] else NULL
-out_prefix <- if (!is.null(gff_file)) {
-  if (length(args) >= 3L) args[3L] else "sfs_nuc"
-} else {
-  if (length(args) >= 2L && nchar(args[2L]) > 0L) args[2L] else "sfs_nuc"
-}
+out_prefix <- if (length(args) >= 2L && nchar(args[2L]) > 0L) args[2L] else "sfs_nuc"
 
 # ── Attribute parser ──────────────────────────────────────────────────────────
 parse_attrs <- function(attr_str) {
@@ -41,32 +33,9 @@ parse_attrs <- function(attr_str) {
   setNames(vals, keys)
 }
 
-# ── GFF annotation reader ─────────────────────────────────────────────────────
-# Returns a data.frame with columns: chrom, start, end, feature_type.
-read_annotation_gff <- function(path) {
-  lines <- readLines(path, warn = FALSE)
-  lines <- lines[nchar(lines) > 0L & !startsWith(lines, "#")]
-  if (length(lines) == 0L) return(NULL)
-  rows <- lapply(lines, function(line) {
-    f  <- strsplit(line, "\t", fixed = TRUE)[[1L]]
-    if (length(f) < 9L) return(NULL)
-    a  <- parse_attrs(f[9L])
-    ft <- a[["feature_type"]]
-    if (is.na(ft)) return(NULL)
-    data.frame(
-      chrom        = f[1L],
-      start        = as.integer(f[4L]),
-      end          = as.integer(f[5L]),
-      feature_type = ft,
-      stringsAsFactors = FALSE
-    )
-  })
-  bind_rows(Filter(Negate(is.null), rows))
-}
-
 # ── Read VCF ──────────────────────────────────────────────────────────────────
 message("Reading VCF: ", vcf_file)
-vcf    <- read.vcfR(vcf_file, verbose = FALSE)
+vcf    <- read.vcfR(vcf_file, verbose = FALSE, convertNA = TRUE)
 gt_mat <- extract.gt(vcf, element = "GT", as.numeric = FALSE)
 
 if (ncol(gt_mat) == 0L) stop("No samples found in VCF.")
@@ -142,20 +111,6 @@ all_sites <- bind_rows(sfs_list) |>
 
 if (nrow(all_sites) == 0L) stop("No variable sites found in VCF.")
 
-# ── Annotate variants with feature types ─────────────────────────────────────
-if (!is.null(gff_file)) {
-  message("Annotating variants with features from: ", gff_file)
-  gff <- read_annotation_gff(gff_file)
-
-  all_sites$feature_type <- mapply(function(chr, pos) {
-    hits <- gff$feature_type[
-      gff$chrom == chr & gff$start <= pos & gff$end >= pos]
-    if (length(hits) == 0L) "intergenic" else hits[[1L]]
-  }, all_sites$chrom, all_sites$pos)
-} else {
-  all_sites$feature_type <- "all"
-}
-
 sfs_data <- all_sites
 
 # ── Plot ──────────────────────────────────────────────────────────────────────
@@ -170,7 +125,7 @@ stacked_sfs_data$variable <- as.character(stacked_sfs_data$variable)
 stacked_sfs_data$variable[stacked_sfs_data$variable == "major_freq"] <- "Major allele"
 stacked_sfs_data$variable[stacked_sfs_data$variable == "minor_freq"] <- "Minor allele"
 
-p_minor_density <- ggplot(sfs_data, aes(x = minor_freq, fill = feature_type)) +
+p_minor_density <- ggplot(sfs_data, aes(x = minor_freq)) +
   geom_histogram(
     bins     = n_bins,
     aes(y = ..density..),
@@ -182,7 +137,6 @@ p_minor_density <- ggplot(sfs_data, aes(x = minor_freq, fill = feature_type)) +
   facet_grid(
     rows = vars(interaction(pop_id, gen_id,
                              sep = " / gen=", lex.order = TRUE)),
-    cols = vars(feature_type),
     labeller = labeller(
       .rows = function(x) paste0("pop=", sub(" / gen=", "  gen=", x))
     ),
@@ -214,7 +168,6 @@ p_both_density <- ggplot(stacked_sfs_data, aes(x = value, fill = variable)) +
   facet_grid(
     rows = vars(interaction(pop_id, gen_id,
                             sep = " / gen=", lex.order = TRUE)),
-    cols = vars(feature_type),
     labeller = labeller(
       .rows = function(x) paste0("pop=", sub(" / gen=", "  gen=", x))
     ),
@@ -237,10 +190,9 @@ p_both_density <- ggplot(stacked_sfs_data, aes(x = value, fill = variable)) +
 # ── Save ──────────────────────────────────────────────────────────────────────
 n_pops  <- n_distinct(sfs_data$pop_id)
 n_gens  <- n_distinct(sfs_data$gen_id)
-n_types <- n_distinct(sfs_data$feature_type)
 
-pdf_w <- max(9, 4.5 * n_types)
-pdf_h <- max(6, 3 * n_pops * n_gens)
+pdf_w <- max(9, 4.5 * n_gens)
+pdf_h <- max(6, 3 * n_pops)
 
 out_pdf <- paste0(out_prefix, "_density_minor_alleles.pdf")
 ggsave(out_pdf, plot = p_minor_density, width = pdf_w, height = pdf_h)
