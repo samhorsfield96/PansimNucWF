@@ -158,10 +158,28 @@ rule filter_variants:
         )
 
 
-rule plink_ld_decay:
+rule fill_ref_genotypes:
     input:
         vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz",
         tbi=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
+    output:
+        vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz.tbi",
+    conda:
+        "envs/variants.yaml"
+    shell:
+        (
+            "bcftools view -e 'COUNT(GT=\"mis\")=N_SAMPLES' {input.vcf} | "
+            "bcftools +setGT -- -t . -n 0 | "
+            "bgzip > {output.vcf} && "
+            "tabix -p vcf {output.vcf}"
+        )
+
+
+rule plink_ld_decay:
+    input:
+        vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz.tbi",
     output:
         f"{OUTPUT_DIR}/plink/ld_decay.ld"
     threads: 40
@@ -174,8 +192,7 @@ rule plink_ld_decay:
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/plink && "
-            "bcftools +setGT {input.vcf} -- -t . -n 0 | "
-            "plink --threads {threads} --vcf /dev/stdin --double-id --allow-extra-chr --memory 8000 "
+            "plink --threads {threads} --vcf {input.vcf} --double-id --allow-extra-chr --memory 8000 "
             "--mac 1 --r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
             "--ld-window-r2 0 --out {params.out_prefix}"
         )
@@ -199,7 +216,7 @@ rule plink_ld_plots:
 
 rule pegas_haplotype_analysis:
     input:
-        vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz"
+        vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz"
     output:
         tsv=f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
         pdf=f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
@@ -213,8 +230,8 @@ rule pegas_haplotype_analysis:
 
 rule sfs_nuc_plot:
     input:
-        vcf=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz",
-        tbi=f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
+        vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz",
+        tbi=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz.tbi",
     output:
         minor_pdf=f"{OUTPUT_DIR}/sfs/sfs_nuc_density_minor_alleles.pdf",
         both_pdf=f"{OUTPUT_DIR}/sfs/sfs_nuc_density_all_alleles.pdf",
