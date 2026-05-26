@@ -414,7 +414,6 @@ p_lines <- ggplot(
   base_theme
 
 p_lines <- add_facets(p_lines)
-p_lines
 ggsave(paste0(outpref, "_haplotype_freq.pdf"), plot = p_lines, width = 8, height = 6)
 
 # ── Plot 2: stacked area chart of haplotype composition ──────────────────────
@@ -436,7 +435,6 @@ p_area <- ggplot(
   base_theme
 
 p_area <- add_facets(p_area)
-p_area
 ggsave(paste0(outpref, "_haplotype_composition.pdf"), plot = p_area, width = 8, height = 6)
 
 # ── Plot 3: stacked area chart of top changing haplotype composition ──────────────────────
@@ -457,7 +455,6 @@ p_area <- ggplot(
   base_theme
 
 p_area <- add_facets(p_area)
-p_area
 ggsave(paste0(outpref, "_per_haplotype_composition.pdf"), plot = p_area, width = 8, height = 6)
 
 # ── Plot 4: top hits with selection coefficients + haplotype-type hatching ───
@@ -506,7 +503,6 @@ p_sel <- ggplot(
   base_theme
 
 p_sel <- add_facets(p_sel)
-p_sel
 ggsave(paste0(outpref, "_sel_coeff_composition.pdf"), plot = p_sel, width = 8, height = 6)
 
 message(sprintf(

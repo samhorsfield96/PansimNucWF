@@ -172,7 +172,6 @@ for (TE_type in TE_types)
     theme_light() +
     theme(legend.position = "none")
   
-  p_dist
   ggsave(file.path(paste0(outpref, "_", TE_type, "_TE_mean_copy_dist.pdf")),
          p_dist, width = 10, height = 6)
   
@@ -193,7 +192,6 @@ for (TE_type in TE_types)
     theme_light() +
     theme(legend.position = "none")
   
-  p_dist
   ggsave(file.path(paste0(outpref, "_", TE_type, "_TE_SD_copy_dist.pdf")),
          p_dist, width = 10, height = 6)
 }
