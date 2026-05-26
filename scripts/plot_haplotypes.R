@@ -135,7 +135,7 @@ if (!file.exists(genome_profiles_rds)) {
       log_sel_coeff <- gff_data$log_sel_coeff[gff_data$sample_name == nm]
       data.frame(sample = nm, population_id = parsed$population_id,
                  generation = parsed$generation, genome_id = parsed$genome_id,
-                 mut_sig = mut_sig, log_sel_coeff = log_sel_coeff,
+                 mut_sig = mut_sig, log_sel_coeff = if (length(log_sel_coeff) > 0) log_sel_coeff else 0.0,
                  stringsAsFactors = FALSE)
     }
   }))
