@@ -4,6 +4,7 @@ library(tidyr)
 library(ggsci)
 library(ggpattern)
 library(vcfR)
+library(tools)
 
 # Usage:
 #   Rscript plot_haplotypes.R [vcf_file] [output_prefix] [top_n] [recombination_threshold]
@@ -24,9 +25,10 @@ library(vcfR)
 args    <- commandArgs(trailingOnly = TRUE)
 args    <- args[!grepl("^--", args)]
 vcf_file <- if (length(args) >= 1) args[1] else stop("VCF file path required as first argument")
-outpref  <- if (length(args) >= 2) args[2] else "haplotypes"
-top_n    <- if (length(args) >= 3) as.integer(args[3]) else 5L
-recombination_threshold <- if (length(args) >= 4) as.numeric(args[4]) else 0.9
+gff_dir <- if (length(args) >= 2) args[2] else "."
+outpref  <- if (length(args) >= 3) args[3] else "haplotypes"
+top_n    <- if (length(args) >= 4) as.integer(args[4]) else 5L
+recombination_threshold <- if (length(args) >= 5) as.numeric(args[5]) else 0.9
 
 # ── Parse sample names → population_id / generation / genome_id ──────────────
 
@@ -37,12 +39,64 @@ parse_sample_name <- function(nm) {
   list(population_id = parts[1L], generation = parts[2L], genome_id = parts[3L])
 }
 
+parse_attrs <- function(attr_str) {
+  pairs <- strsplit(attr_str, ";", fixed = TRUE)[[1L]]
+  kv    <- strsplit(pairs, "=", fixed = TRUE)
+  keys  <- vapply(kv, `[[`, character(1L), 1L)
+  vals  <- vapply(kv, function(x) if (length(x) >= 2L) x[[2L]] else NA_character_,
+                  character(1L))
+  setNames(vals, keys)
+}
+
+# read the start of gff files to get selection coefficients for mutations, if available
+get_gff_data <- function(gff_dir) {
+  gff_files <- list.files(gff_dir, pattern = "\\.gff$", full.names = TRUE)
+  sel_coeffs <- data.frame(chrom = character(), pos = integer(), sel_coeff = numeric(), stringsAsFactors = FALSE)
+  rows <- lapply(gff_files, function(gff_file) {
+    base <- file_path_sans_ext(basename(gff_file))
+    parsed <- parse_sample_name(base)
+    con = file(gff_file, "r")
+    while(TRUE) {
+      line = readLines(con, n = 1)
+      if (!startsWith(line, "#")) {
+        break
+      }
+    }
+    close(con) 
+    
+    if (length(line) > 0) {
+      f <- strsplit(line, "\t")[[1]]
+      a <- parse_attrs(f[9L])
+      contig_name  <- f[1L]
+      contig_index <- suppressWarnings(
+        as.integer(sub("contig_", "", contig_name)) - 1L
+      )
+      data.frame(
+        sample_name = base,
+        population = parsed$population_id,
+        generation = parsed$generation,
+        genome = parsed$genome_id,
+        contig_index = contig_index,
+        start        = as.integer(f[4L]),   # GFF is 1-based
+        end          = as.integer(f[5L]),
+        strand       = f[7L],
+        element_id   = suppressWarnings(as.integer(a[["element_id"]])),
+        feature_type = a[["feature_type"]],
+        log_sel_coeff = suppressWarnings(as.numeric(a[["log_genome_selection_coefficient"]])),
+        stringsAsFactors = FALSE
+      )
+    }
+  })
+  bind_rows(Filter(Negate(is.null), rows))
+}
+
 # ── Read VCF and build per-genome mutation profiles ───────────────────────────
 
 genome_profiles_rds <- paste0(outpref, "_genome_profiles.rds")
 if (!file.exists(genome_profiles_rds)) {
   message("Reading VCF: ", vcf_file)
   vcf <- read.vcfR(vcf_file, verbose = FALSE)
+  gff_data <- get_gff_data(gff_dir)
 
   gt_mat <- extract.gt(vcf, element = "GT", as.numeric = FALSE)
   # Guard against single-variant VCFs which drop the matrix dimension
@@ -78,9 +132,10 @@ if (!file.exists(genome_profiles_rds)) {
                  genome_id = i, mut_sig = mut_sig, log_sel_coeff = 0,
                  stringsAsFactors = FALSE)
     } else {
+      log_sel_coeff <- gff_data$log_sel_coeff[gff_data$sample_name == nm]
       data.frame(sample = nm, population_id = parsed$population_id,
                  generation = parsed$generation, genome_id = parsed$genome_id,
-                 mut_sig = mut_sig, log_sel_coeff = 0,
+                 mut_sig = mut_sig, log_sel_coeff = log_sel_coeff,
                  stringsAsFactors = FALSE)
     }
   }))
