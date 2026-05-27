@@ -286,6 +286,8 @@ rule run_progressive_minimap2:
         output_dir=f"{OUTPUT_DIR}/synteny",
         FASTA_EXTENSIONS=FASTA_EXTENSIONS,
     threads: 40
+    log:
+        f"{OUTPUT_DIR}/logs/synteny.log"
     conda:
         "envs/synteny.yaml"
     script:
