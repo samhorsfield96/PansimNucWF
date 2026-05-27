@@ -25,6 +25,7 @@ suppressPackageStartupMessages({
   library(stringr)
   library(ggplot2)
   library(scales)
+  library(tools)
 })
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ take_switch <- function(flag, args) {
 }
 
 r <- take_flag("--out",        args, "sv_plot.pdf"); out_file   <- r$val; args <- r$args
-r <- take_flag("--width",      args, "16");          p_width    <- as.numeric(r$val); args <- r$args
+r <- take_flag("--width",      args, NULL);          p_width    <- if (is.null(r$val)) NULL else as.numeric(r$val); args <- r$args
 r <- take_flag("--height",     args, NULL);          p_height   <- if (is.null(r$val)) NULL else as.numeric(r$val); args <- r$args
 r <- take_flag("--types",      args, NULL);          keep_types <- if (is.null(r$val)) NULL else strsplit(r$val, ",")[[1L]]; args <- r$args
 r <- take_flag("--link-types", args, NULL);          link_types <- if (is.null(r$val)) NULL else strsplit(r$val, ",")[[1L]]; args <- r$args
@@ -105,16 +106,6 @@ sim_directory <- args[-1L]
 
 # ── read data ─────────────────────────────────────────────────────────────────
 
-# root_path <- "/Users/samhorsfield/Software/PansimNuc/parameter_sweep/baseline/root_out.gff"
-# sim_directory <- "/Users/samhorsfield/Software/PansimNuc/parameter_sweep/baseline"
-# contig_gap <- 500
-# no_links <- FALSE
-# link_types <- c("TE-COPY", "TE-CUT")
-# keep_types <- c("exon", "intron", "intergenic", "TE-COPY", "TE-CUT")
-# p_width <- 16
-# p_height <- 16
-# out_file <- "/Users/samhorsfield/Software/PansimNuc/parameter_sweep/baseline/sv_plot.pdf"
-
 message("Reading root GFF: ", root_path)
 all_feats <- read_pansimnuc_gff(root_path, "root")
 
@@ -123,8 +114,7 @@ sim_paths <- sim_paths[sim_paths != root_path]
 
 for (i in seq_along(sim_paths)) {
   filename <- basename(sim_paths[i])
-  label <- as.character(as.numeric(gsub("([0-9]+).*$", "\\1", filename)))
-  message("Reading ", label, ": ", sim_paths[i])
+  label <- as.character(file_path_sans_ext(basename(filename)))
   block <- read_pansimnuc_gff(sim_paths[i], label)
   if (!is.null(block)) all_feats <- bind_rows(all_feats, block)
 }
@@ -254,7 +244,12 @@ if (length(extra_types) > 0L) {
 # ── plot dimensions ───────────────────────────────────────────────────────────
 
 n_bins <- nrow(seqs)
-if (is.null(p_height)) p_height <- max(4.0, n_bins * 2.5)
+
+# calculate max sequence length across all genomes for default height scaling (1 inch per 10 Mbp)
+max_seq_len <- max(seqs$length)
+# one inch per 0.5 Mb maximum
+if (is.null(p_width)) p_width <- min(max(max_seq_len / 2.5e5, 7), 49.9)
+if (is.null(p_height)) p_height <- min(max(4.0, n_bins * 0.3), 49.9)
 
 # ── build gggenomes plot ──────────────────────────────────────────────────────
 
@@ -277,16 +272,15 @@ if (!no_links && !is.null(links) && nrow(links) > 0L) {
 p <- p +
   geom_feat(
     data        = feats("contigs"),
-    aes(fill    = contig_shade),
+    aes(colour    = contig_shade),
     alpha       = 0.12,
     linewidth   = NA,
     show.legend = FALSE
   ) +
-  scale_fill_manual(
+  scale_colour_manual(
     values = c("0" = "#AAAAAA", "1" = "#555555"),
     guide  = "none"
-  ) +
-  new_scale_fill()
+  )
 
 # Layer 2 — sequence backbone and genome labels
 p <- p +

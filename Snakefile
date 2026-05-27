@@ -340,18 +340,17 @@ if IS_SIMULATED:
 
     rule plot_sv:
         output:
-            pdf=f"{OUTPUT_DIR}/sv/sv_plot.pdf",
+            f"{OUTPUT_DIR}/sv/sv_plot.pdf",
         params:
             script=PLOT_SV_SCRIPT,
             root_gff=f"{GENOME_DIR}/root.gff",
             sim_dir=GENOME_DIR,
-            out=f"{OUTPUT_DIR}/sv/sv_plot.pdf",
         conda:
             "envs/simulated.yaml"
         shell:
             (
                 f"mkdir -p {OUTPUT_DIR}/sv && "
-                "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {params.out}"
+                "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {output} --link-types exon,TE-COPY,TE-CUT --types exon,TE-COPY,TE-CUT --gap 500"
             )
 
     if HAS_DFE_CSV:
