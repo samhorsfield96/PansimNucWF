@@ -140,6 +140,8 @@ contig_info <- all_feats |>
   summarise(contig_len = max(end), .groups = "drop") |>
   arrange(bin_id, contig_num)
 
+contig_gap <- max(contig_info$contig_len) * 0.05  # 5% of max contig length
+
 # Cumulative left-edge offset within each genome
 contig_info <- contig_info |>
   group_by(bin_id) |>
