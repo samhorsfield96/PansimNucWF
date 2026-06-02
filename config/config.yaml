@@ -1,6 +1,6 @@
-reference: "root.fasta"
-input_dir: "analysis"
-output_dir: "results"
+reference: "/data/sam/analysis/PansimNuc/parameter_sweep/exon_mu_high_recombination_none_selection_none/root.fasta"
+input_dir: "/data/sam/analysis/PansimNuc/parameter_sweep/exon_mu_high_recombination_none_selection_none"
+output_dir: "/data/sam/analysis/PansimNuc/parameter_sweep/exon_mu_high_recombination_none_selection_none/pg_results"
 fasta_extensions: [".fasta", ".fa", ".fna"]
 
 # minimap2 alignment preset. Options: asm5 (<1% divergence), asm10 (<10%), asm20 (<20%)
@@ -21,5 +21,5 @@ plink_ld_window_kb: 1000
 pegas_recombination_threshold: 0.9
 
 # set to true to enable simulation-specific analyses (plot_haplotypes, plot_te_copy_numbers, plot_sv, print_DFEs)
-simulated: false
+simulated: True
 haplotypes_top_n: 5    # top N haplotypes to retain in haplotype plots (0 = keep all)
