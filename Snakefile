@@ -285,6 +285,7 @@ rule run_progressive_minimap2:
         plot=f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",      
     params:
         minimap2_params=config.get("progressive_minimap2_params", "-ax asm5"),
+        max_alignments=config.get("synteny_alignments_n", 20),
         output_dir=f"{OUTPUT_DIR}/synteny",
         FASTA_EXTENSIONS=FASTA_EXTENSIONS,
     threads: 40
@@ -347,12 +348,13 @@ if IS_SIMULATED:
             script=PLOT_SV_SCRIPT,
             root_gff=f"{GENOME_DIR}/root.gff",
             sim_dir=GENOME_DIR,
+            max_alignments=config.get("synteny_alignments_n", 20),
         conda:
             "envs/simulated.yaml"
         shell:
             (
                 f"mkdir -p {OUTPUT_DIR}/sv && "
-                "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {output} --link-types exon,TE-COPY,TE-CUT --types exon,TE-COPY,TE-CUT --gap 500"
+                "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {output} --link-types exon,TE-COPY,TE-CUT --types exon,TE-COPY,TE-CUT --gap 500 --max-alignments {params.max_alignments}"
             )
 
     if HAS_DFE_CSV:

@@ -75,7 +75,7 @@ if (length(args) < 2L) {
     "Usage: Rscript sv_plot.R <root.gff> <sim0.gff> [sim1.gff ...]\n",
     "  [--out sv_plot.pdf] [--width 16] [--height auto]\n",
     "  [--types exon,intron,intergenic,TE-CUT,TE-COPY]\n",
-    "  [--link-types exon,intron] [--no-links] [--gap 500]\n"
+    "  [--link-types exon,intron] [--no-links] [--gap 500] [--max-alignments 20]\n"
   )
   quit(status = 1L)
 }
@@ -100,6 +100,7 @@ r <- take_flag("--types",      args, NULL);          keep_types <- if (is.null(r
 r <- take_flag("--link-types", args, NULL);          link_types <- if (is.null(r$val)) NULL else strsplit(r$val, ",")[[1L]]; args <- r$args
 r <- take_flag("--gap",        args, "500");         contig_gap <- as.integer(r$val); args <- r$args
 r <- take_switch("--no-links", args);                no_links   <- r$val; args <- r$args
+r <- take_flag("--max-alignments", args, "20");   max_alignments <- as.integer(r$val); args <- r$args
 
 root_path <- args[1L]
 sim_directory <- args[-1L]
@@ -111,6 +112,11 @@ all_feats <- read_pansimnuc_gff(root_path, "root")
 
 sim_paths <- list.files(sim_directory, pattern = "*.gff", full.names = TRUE)
 sim_paths <- sim_paths[sim_paths != root_path]
+
+# randomly downsample to max_alignments if there are more than max_alignments
+if (length(sim_paths) > max_alignments) {
+  sim_paths <- sample(sim_paths, max_alignments)
+}
 
 for (i in seq_along(sim_paths)) {
   filename <- basename(sim_paths[i])

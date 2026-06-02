@@ -17,6 +17,9 @@ variant_calling_min_quality: 20
 plink_ld_window: 99999
 plink_ld_window_kb: 1000
 
+# number of synteny alignments to retain per sample for synteny-based analyses. Does not include root.
+synteny_alignments_n: 20
+
 # pegas parameters for recombination detection
 pegas_recombination_threshold: 0.9
 

@@ -1,6 +1,7 @@
 import subprocess
 import os
 import multiprocessing
+import random
 
 def normalize_fasta_chromosomes(input_fasta: str, output_dir: str) -> str:
     """
@@ -41,7 +42,7 @@ def run_minimap2_alignment(genome1 : str, genome2 : str, output_dir : str, minim
 
     return output_file_prefix
 
-def run_progressive_minimap2(reference : str, fasta_dir : str, output_dir : str, log_file : str, minimap2_params : str = "-ax asm5", threads : int = 1, FASTA_EXTENSIONS = (".fasta", ".fa", ".fna")):
+def run_progressive_minimap2(reference : str, fasta_dir : str, output_dir : str, max_alignments : int, log_file : str, minimap2_params : str = "-ax asm5", threads : int = 1, FASTA_EXTENSIONS = (".fasta", ".fa", ".fna")):
     """
     Run minimap2 to align the sequences in the fasta_dir to the reference genome and save the output in output_dir.
     """
@@ -52,7 +53,11 @@ def run_progressive_minimap2(reference : str, fasta_dir : str, output_dir : str,
         if file.endswith(tuple(FASTA_EXTENSIONS)):
             if file != os.path.basename(reference):  # Exclude the reference genome from the file list
                 file_list.append(os.path.join(fasta_dir, file))
-    
+                
+    # randomly sample to get max_alignments number of files if there are more than max_alignments
+    if len(file_list) > max_alignments:
+        file_list = random.sample(file_list, max_alignments)
+
     file_list.sort()  # Sort the file list to ensure consistent order
 
     # add reference genome to start of the file list
@@ -76,14 +81,14 @@ def run_progressive_minimap2(reference : str, fasta_dir : str, output_dir : str,
         
     return output_file_prefixes, file_list
 
-def run_plot_synteny(reference : str, fasta_dir : str, output_dir : str, log_file : str, minimap2_params : str = "-ax asm5", threads : int = 1, FASTA_EXTENSIONS = (".fasta", ".fa", ".fna")):
+def run_plot_synteny(reference : str, fasta_dir : str, output_dir : str, max_alignments : int, log_file : str, minimap2_params : str = "-ax asm5", threads : int = 1, FASTA_EXTENSIONS = (".fasta", ".fa", ".fna")):
     
     # create output directory if it doesn't exist
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     # generate alignments
-    output_file_prefixes, file_list = run_progressive_minimap2(reference, fasta_dir, output_dir, log_file, minimap2_params, threads, FASTA_EXTENSIONS)
+    output_file_prefixes, file_list = run_progressive_minimap2(reference, fasta_dir, output_dir, max_alignments, log_file, minimap2_params, threads, FASTA_EXTENSIONS)
 
     # generate list of genome names for plotsr
     genome_names = []
@@ -100,4 +105,4 @@ def run_plot_synteny(reference : str, fasta_dir : str, output_dir : str, log_fil
     command = f"plotsr {plotsr_file_commands} --genomes {os.path.join(output_dir, 'genome_names.txt')} -o {os.path.join(output_dir, 'synteny_plot.pdf')} >> {log_file} 2>&1"
     subprocess.run(command, shell=True, check=True)
 
-run_plot_synteny(snakemake.input.reference, snakemake.input.fasta_dir, snakemake.params.output_dir, snakemake.log[0], snakemake.params.minimap2_params, snakemake.threads, snakemake.params.FASTA_EXTENSIONS)
+run_plot_synteny(snakemake.input.reference, snakemake.input.fasta_dir, snakemake.params.output_dir, snakemake.params.max_alignments, snakemake.log[0], snakemake.params.minimap2_params, snakemake.threads, snakemake.params.FASTA_EXTENSIONS)
