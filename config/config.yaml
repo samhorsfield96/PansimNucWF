@@ -21,5 +21,5 @@ plink_ld_window_kb: 1000
 pegas_recombination_threshold: 0.9
 
 # set to true to enable simulation-specific analyses (plot_haplotypes, plot_te_copy_numbers, plot_sv, print_DFEs)
-simulated: True
+simulated: false
 haplotypes_top_n: 5    # top N haplotypes to retain in haplotype plots (0 = keep all)
