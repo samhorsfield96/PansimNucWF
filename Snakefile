@@ -137,6 +137,8 @@ rule call_variants_paftools:
     output:
         vcf=f"{OUTPUT_DIR}/variants/per_sample/{{sample}}.vcf.gz",
         tbi=f"{OUTPUT_DIR}/variants/per_sample/{{sample}}.vcf.gz.tbi",
+    params:
+        preset=config.get("paftools_preset", "-l 50 -L 50"),
     conda:
         "envs/alignment.yaml"
     shell:
