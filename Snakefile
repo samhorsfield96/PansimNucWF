@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 configfile: "config/config.yaml"
@@ -7,10 +8,10 @@ GENOME_DIR = config["input_dir"]
 FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
 MINIMAP2_INDEX = REFERENCE + ".mmi"
 REFERENCE_FAI  = REFERENCE + ".fai"
-PEGAS_SCRIPT = "scripts/pegas_haplotype_analysis.R"
+PEGAS_SCRIPT = os.path.join(workflow.basedir, "scripts/pegas_haplotype_analysis.R")
 RECOMBINATION_THRESHOLD = config.get("pegas_recombination_threshold", 0.9)
-PLINK_PLOT_SCRIPT = "scripts/plink_ld_plots.R"
-SFS_NUC_SCRIPT = "scripts/plot_sfs_nuc.R"
+PLINK_PLOT_SCRIPT = os.path.join(workflow.basedir, "scripts/plink_ld_plots.R")
+SFS_NUC_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_sfs_nuc.R")
 OUTPUT_DIR = config["output_dir"]
 
 IS_SIMULATED = config.get("simulated", False)
@@ -18,10 +19,10 @@ DFE_CSV = f"{GENOME_DIR}/selection_samples.csv"
 HAS_DFE_CSV = IS_SIMULATED and Path(DFE_CSV).exists()
 
 if IS_SIMULATED:
-    PLOT_HAPLOTYPES_SCRIPT = "scripts/plot_haplotypes.R"
-    PLOT_TE_SCRIPT = "scripts/plot_te_copy_numbers.R"
-    PLOT_SV_SCRIPT = "scripts/plot_sv.R"
-    PLOT_DFE_SCRIPT = "scripts/print_DFEs.R"
+    PLOT_HAPLOTYPES_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_haplotypes.R")
+    PLOT_TE_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_te_copy_numbers.R")
+    PLOT_SV_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_sv.R")
+    PLOT_DFE_SCRIPT = os.path.join(workflow.basedir, "scripts/print_DFEs.R")
     HAPLOTYPES_TOP_N = config.get("haplotypes_top_n", 5)
 
 
