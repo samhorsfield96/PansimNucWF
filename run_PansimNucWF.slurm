@@ -60,8 +60,8 @@ echo "========================================================"
 
 cd ${SNAKEMAKE_DIR}
 
-pixi run snakemake -s ${SNAKEMAKE_DIR}/Snakefile --directory ${RUN_OUTDIR} --configfile ${RUN_CONFIG} --cores $SLURM_CPUS_PER_TASK --use-conda --conda-prefix ${SNAKEMAKE_DIR}/.snakemake/conda --config reference=${RUN_INPUT_DIR}/root.fasta input_dir=${RUN_INPUT_DIR} output_dir=${RUN_OUTDIR} simulated="True" --unlock
-pixi run snakemake -s ${SNAKEMAKE_DIR}/Snakefile --directory ${RUN_OUTDIR} --configfile ${RUN_CONFIG} --cores $SLURM_CPUS_PER_TASK --use-conda --conda-prefix ${SNAKEMAKE_DIR}/.snakemake/conda --config reference=${RUN_INPUT_DIR}/root.fasta input_dir=${RUN_INPUT_DIR} output_dir=${RUN_OUTDIR} simulated="True" > "${RUN_OUTDIR}/pansimnucWF.log" 2>&1
+pixi run snakemake -s ${SNAKEMAKE_DIR}/Snakefile --directory ${RUN_OUTDIR} --configfile ${RUN_CONFIG} --cores $SLURM_CPUS_PER_TASK --use-conda --conda-prefix ${SNAKEMAKE_DIR}/.snakemake/conda --config reference=${RUN_INPUT_DIR}/root.fasta input_dir=${RUN_INPUT_DIR} output_dir=${RUN_OUTDIR} simulated="False" --unlock
+pixi run snakemake -s ${SNAKEMAKE_DIR}/Snakefile --directory ${RUN_OUTDIR} --configfile ${RUN_CONFIG} --cores $SLURM_CPUS_PER_TASK --use-conda --conda-prefix ${SNAKEMAKE_DIR}/.snakemake/conda --config reference=${RUN_INPUT_DIR}/root.fasta input_dir=${RUN_INPUT_DIR} output_dir=${RUN_OUTDIR} simulated="False" > "${RUN_OUTDIR}/pansimnucWF.log" 2>&1
 
 EXIT_CODE=$?
 
