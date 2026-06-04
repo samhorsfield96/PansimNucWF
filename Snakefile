@@ -114,7 +114,7 @@ rule align_sample:
         genome=lambda wc: resolve_sample_genome(wc.sample),
     output:
         paf=f"{OUTPUT_DIR}/alignment/{{sample}}.paf.gz",
-    threads: 40
+    threads: 1
     params:
         preset=config.get("minimap2_preset", "asm5"),
     log:
