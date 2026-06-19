@@ -336,14 +336,84 @@ if (!file.exists(hap_data_rds_file)) {
   hap_data <- readRDS(hap_data_rds_file)
 }
 
+# ── Ensure migration columns exist ────────────────────────────────────────────
+if (!"source_population_id" %in% colnames(hap_data)) hap_data$source_population_id <- NA_integer_
+if (!"source_haplotype_id"  %in% colnames(hap_data)) hap_data$source_haplotype_id  <- NA_character_
+
+# ── Detect cross-population haplotype migration ───────────────────────────────
+# A haplotype is classified as a migrant when the same mutation profile
+# (profile_str) is found in another population at a strictly later generation.
+# The source population is the one where the profile first appeared.
+if (length(unique(hap_data$population_id)) > 1) {
+  message("Detecting cross-population haplotype migration...")
+
+  # First generation each non-reference profile appears (freq > 0) per population
+  profile_origins <- hap_data %>%
+    filter(freq > 0, !is.na(profile_str), profile_str != "NA") %>%
+    group_by(population_id, profile_str) %>%
+    summarise(
+      first_gen    = min(generation),
+      haplotype_id = haplotype_id[which.min(generation)],
+      .groups      = "drop"
+    )
+
+  # Profiles shared across more than one population
+  multi_pop_profiles <- profile_origins %>%
+    group_by(profile_str) %>%
+    filter(n() > 1) %>%
+    ungroup()
+
+  if (nrow(multi_pop_profiles) > 0) {
+    # Source = earliest first appearance; ties broken by lowest population_id
+    source_origins <- multi_pop_profiles %>%
+      group_by(profile_str) %>%
+      arrange(first_gen, population_id) %>%
+      slice(1L) %>%
+      ungroup() %>%
+      rename(source_population_id = population_id,
+             source_haplotype_id  = haplotype_id,
+             source_first_gen     = first_gen)
+
+    # Migrants: same profile appeared strictly later in a different population
+    migrant_entries <- multi_pop_profiles %>%
+      inner_join(source_origins, by = "profile_str") %>%
+      filter(population_id != source_population_id,
+             first_gen > source_first_gen)
+
+    if (nrow(migrant_entries) > 0) {
+      for (i in seq_len(nrow(migrant_entries))) {
+        prof    <- migrant_entries$profile_str[i]
+        pop     <- migrant_entries$population_id[i]
+        src_pop <- migrant_entries$source_population_id[i]
+        src_hap <- migrant_entries$source_haplotype_id[i]
+        mask    <- hap_data$profile_str == prof & hap_data$population_id == pop
+        hap_data$type[mask]                <- "migrant"
+        hap_data$source_population_id[mask] <- src_pop
+        hap_data$source_haplotype_id[mask]  <- src_hap
+      }
+      message(sprintf(
+        "Identified %d migrant haplotype(s) from %d source population(s).",
+        nrow(migrant_entries),
+        length(unique(migrant_entries$source_population_id))
+      ))
+    } else {
+      message("No migration events detected (shared profiles appeared simultaneously).")
+    }
+  } else {
+    message("No haplotype profiles shared across populations.")
+  }
+}
+
 # ── Summary table ─────────────────────────────────────────────────────────────
 hap_summary <- hap_data %>%
   group_by(population_id, haplotype_id, type, profile_str) %>%
   summarise(
-    first_generation = min(generation[freq > 0]),
-    peak_freq        = max(freq),
-    mean_sel_coeff   = mean(sel_coeff, na.rm = TRUE),
-    .groups          = "drop"
+    first_generation     = min(generation[freq > 0]),
+    peak_freq            = max(freq),
+    mean_sel_coeff       = mean(sel_coeff, na.rm = TRUE),
+    source_population_id = { v <- source_population_id[!is.na(source_population_id)]; if (length(v)) v[1L] else NA_integer_ },
+    source_haplotype_id  = { v <- source_haplotype_id[!is.na(source_haplotype_id)];  if (length(v)) v[1L] else NA_character_ },
+    .groups              = "drop"
   ) %>%
   arrange(population_id, first_generation)
 
@@ -371,10 +441,11 @@ n_pops        <- length(unique(hap_data$population_id))
 has_multi_pop <- n_pops > 1
 
 type_colour_values <- c(
-  reference = "#3C5488FF",
+  reference   = "#3C5488FF",
   founder     = "#4DBBD5",
   mutant      = "#E64B35",
-  recombinant = "#00A087"
+  recombinant = "#00A087",
+  migrant     = "#F39B7FFF"
 )
 
 type_colour_scale <- scale_colour_manual(values = type_colour_values, name = "Haplotype")
@@ -384,8 +455,7 @@ add_facets <- function(p) {
   if (has_multi_pop) {
     p + facet_grid(
       ~ population_id,
-      labeller = as_labeller(function(x) paste0("population_id: ", x)),
-      ncol     = 1
+      labeller = as_labeller(function(x) paste0("population_id: ", x))
     )
   } else {
     p
@@ -417,7 +487,7 @@ p_lines <- add_facets(p_lines)
 ggsave(paste0(outpref, "_haplotype_freq.pdf"), plot = p_lines, width = 8, height = 6)
 
 # ── Plot 2: stacked area chart of haplotype composition ──────────────────────
-message("Plotting haplotype composition stacked areas...")
+message("Plotting stacked haplotype composition areas...")
 
 p_area <- ggplot(
   hap_data,
@@ -438,7 +508,7 @@ p_area <- add_facets(p_area)
 ggsave(paste0(outpref, "_haplotype_composition.pdf"), plot = p_area, width = 8, height = 6)
 
 # ── Plot 3: stacked area chart of top changing haplotype composition ──────────────────────
-message("Plotting haplotype composition stacked areas...")
+message("Plotting changing haplotype composition stacked areas...")
 
 p_area <- ggplot(
   hap_data,
@@ -462,7 +532,8 @@ type_pattern_values <- c(
   reference   = "none",
   founder     = "none",
   mutant      = "stripe",
-  recombinant = "crosshatch"
+  recombinant = "crosshatch",
+  migrant     = "circle"
 )
 
 p_sel <- ggplot(
@@ -494,7 +565,8 @@ p_sel <- ggplot(
       reference   = "grey30",
       founder     = "grey30",
       mutant      = "grey30",
-      recombinant = "grey30"
+      recombinant = "grey30",
+      migrant     = "grey30"
     ),
     name = "Haplotype type"
   ) +
@@ -506,10 +578,11 @@ p_sel <- add_facets(p_sel)
 ggsave(paste0(outpref, "_sel_coeff_composition.pdf"), plot = p_sel, width = 8, height = 6)
 
 message(sprintf(
-  "Done. %d haplotypes tracked (%d founder, %d mutant, %d recombinant).",
+  "Done. %d haplotypes tracked (%d founder, %d mutant, %d recombinant, %d migrant).",
   nrow(hap_summary),
   sum(hap_summary$type == "founder"),
   sum(hap_summary$type == "mutant"),
-  sum(hap_summary$type == "recombinant")
+  sum(hap_summary$type == "recombinant"),
+  sum(hap_summary$type == "migrant")
 ))
 
