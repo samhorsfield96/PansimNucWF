@@ -221,8 +221,11 @@ classify_genome_haplotypes <- function(pop_df) {
   known_types    <- list()   # profile_str -> haplotype type string
   known_parents  <- list()   # profile_str -> "P1,P2" or NA
   hap_labels     <- list()   # profile_str -> short label
-  counter        <- 0L
-  new_label <- function(prefix) { counter <<- counter + 1L; paste0(prefix, counter) }
+  counters       <- list()   # prefix -> integer count (separate counter per prefix)
+  new_label <- function(prefix) {
+    counters[[prefix]] <<- if (is.null(counters[[prefix]])) 1L else counters[[prefix]] + 1L
+    paste0(prefix, counters[[prefix]])
+  }
   
   # determine how many generations present, adjust which generation to look for recombinants
   if (length(generations) > 1)
@@ -381,12 +384,17 @@ if (length(unique(hap_data$population_id)) > 1) {
              first_gen > source_first_gen)
 
     if (nrow(migrant_entries) > 0) {
+      migrant_counters <- list()  # per-population counter for "I" labels
       for (i in seq_len(nrow(migrant_entries))) {
         prof    <- migrant_entries$profile_str[i]
         pop     <- migrant_entries$population_id[i]
         src_pop <- migrant_entries$source_population_id[i]
         src_hap <- migrant_entries$source_haplotype_id[i]
         mask    <- hap_data$profile_str == prof & hap_data$population_id == pop
+        pop_key <- as.character(pop)
+        migrant_counters[[pop_key]] <- if (is.null(migrant_counters[[pop_key]])) 1L else migrant_counters[[pop_key]] + 1L
+        new_id  <- paste0("I", migrant_counters[[pop_key]])
+        hap_data$haplotype_id[mask]         <- new_id
         hap_data$type[mask]                <- "migrant"
         hap_data$source_population_id[mask] <- src_pop
         hap_data$source_haplotype_id[mask]  <- src_hap

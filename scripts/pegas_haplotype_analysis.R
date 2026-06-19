@@ -34,6 +34,23 @@ gt <- sub("[/|].*$", "", gt)   # "0/0" -> "0", already-haploid "0" stays "0"
 message("GT unique values: ", paste(sort(unique(as.vector(gt))), collapse = ", "))
 message("Variants: ", nrow(gt), "  Samples: ", ncol(gt))
 
+# ── Filter to last generation ─────────────────────────────────────────────────
+# Sample names are expected to follow pop_<N>_gen_<N>_genome_<N>.
+# If parseable, retain only samples from the final generation.
+sample_names <- colnames(gt)
+gen_vals <- suppressWarnings(
+  as.integer(sub(".*_gen_(\\d+)_genome_.*", "\\1", sample_names))
+)
+if (!all(is.na(gen_vals))) {
+  last_gen   <- max(gen_vals, na.rm = TRUE)
+  keep       <- !is.na(gen_vals) & gen_vals == last_gen
+  gt         <- gt[, keep, drop = FALSE]
+  message(sprintf("Filtering to last generation (%d). Samples retained: %d / %d.",
+                  last_gen, sum(keep), length(keep)))
+} else {
+  message("Sample names do not contain generation info; using all samples.")
+}
+
 # gt is variants x samples; transpose to samples x variants
 allele_mat <- t(gt)
 
