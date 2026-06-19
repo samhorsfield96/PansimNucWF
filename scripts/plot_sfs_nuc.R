@@ -191,15 +191,15 @@ p_both_density <- ggplot(stacked_sfs_data, aes(x = value, fill = variable)) +
 n_pops  <- n_distinct(sfs_data$pop_id)
 n_gens  <- n_distinct(sfs_data$gen_id)
 
-pdf_w <- max(9, 4.5 * n_gens)
-pdf_h <- max(6, 3 * n_pops)
+pdf_w <- 12
+pdf_h <- max(6, 3 * (n_pops * n_gens))
 
 out_pdf <- paste0(out_prefix, "_density_minor_alleles.pdf")
-ggsave(out_pdf, plot = p_minor_density, width = pdf_w, height = pdf_h)
+ggsave(out_pdf, plot = p_minor_density, width = pdf_w, height = pdf_h, limitsize = FALSE)
 message("Saved: ", out_pdf)
 
 out_pdf <- paste0(out_prefix, "_density_all_alleles.pdf")
-ggsave(out_pdf, plot = p_both_density, width = pdf_w, height = pdf_h)
+ggsave(out_pdf, plot = p_both_density, width = pdf_w, height = pdf_h, limitsize = FALSE)
 message("Saved: ", out_pdf)
 
 out_csv <- paste0(out_prefix, "_sfs.csv")
