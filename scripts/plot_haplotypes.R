@@ -260,7 +260,7 @@ classify_genome_haplotypes <- function(pop_df) {
         parent_str     <- NA_character_
         if (prof_str == "NA") {
           htype <- "reference"; prefix <- "REF"
-        } else if (gen == 0) {
+        } else if (gen == generations[1L]) {
           htype <- "founder"; prefix <- "F"
         } else {
           parent_profiles <- find_recombinant_parents(prof_vec, all_profiles_named, threshold = recombination_threshold)
@@ -377,11 +377,21 @@ if (length(unique(hap_data$population_id)) > 1) {
              source_haplotype_id  = haplotype_id,
              source_first_gen     = first_gen)
 
-    # Migrants: same profile appeared strictly later in a different population
+    # Founding generation per population (earliest generation present)
+    founding_gens <- hap_data %>%
+      group_by(population_id) %>%
+      summarise(founding_gen = min(generation), .groups = "drop")
+
+    # Migrants: same profile appeared strictly later in a different population,
+    # BUT only if it did not arrive in the founding generation of that population
+    # (individuals present at founding are classified as founders, not migrants).
     migrant_entries <- multi_pop_profiles %>%
       inner_join(source_origins, by = "profile_str") %>%
+      inner_join(founding_gens, by = "population_id") %>%
       filter(population_id != source_population_id,
-             first_gen > source_first_gen)
+             first_gen > source_first_gen,
+             first_gen > founding_gen) %>%
+      select(-founding_gen)
 
     if (nrow(migrant_entries) > 0) {
       migrant_counters <- list()  # per-population counter for "I" labels
