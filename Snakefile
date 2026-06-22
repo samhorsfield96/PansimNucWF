@@ -30,6 +30,9 @@ def resolve_sample_genome(sample):
     for extension in FASTA_EXTENSIONS:
         candidate = Path(GENOME_DIR) / f"{sample}{extension}"
         if candidate.exists():
+            # ignore generated genomes in normalized_fasta directory if it exists e.g. $OUTPUT_DIR/synteny/normalized_fasta
+            if "normalized_fasta" in str(candidate.parent):
+                continue
             return str(candidate)
     raise ValueError(
         f"Could not find genome FASTA for sample '{sample}' in {GENOME_DIR} "
