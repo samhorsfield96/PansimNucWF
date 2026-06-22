@@ -196,11 +196,66 @@ find_recombinant_parents <- function(profile_c, all_profiles_named, threshold = 
   NULL
 }
 
+# Assign a globally-consistent base label (e.g. "M1", "R2", "REF") to every
+# mutation profile, processing all populations together in generation order.
+# The same mutation profile gets the same number across all populations, so
+# migration is immediately visible: P0M3 and P1M3 carry identical mutations.
+build_global_hap_labels <- function(sample_meta, recombination_threshold) {
+  all_genome_profiles <- sample_meta %>%
+    group_by(population_id, genome_id, generation) %>%
+    summarise(
+      profile_str = {
+        sigs <- mut_sig[!is.na(mut_sig)]
+        if (length(sigs) == 0L) "NA" else paste(sigs, collapse = ";")
+      },
+      .groups = "drop"
+    )
+
+  all_generations <- sort(unique(all_genome_profiles$generation))
+  first_gen       <- all_generations[1L]
+  adjustment      <- if (length(all_generations) > 1L) 1L else 0L
+
+  known_profiles <- list()
+  hap_labels     <- list()
+  counters       <- list()
+
+  new_label <- function(prefix) {
+    counters[[prefix]] <<- if (is.null(counters[[prefix]])) 1L else counters[[prefix]] + 1L
+    paste0(prefix, counters[[prefix]])
+  }
+
+  for (gen in all_generations) {
+    prev_profiles      <- unique(all_genome_profiles$profile_str[
+      all_genome_profiles$generation == (gen - adjustment)])
+    prev_profiles      <- prev_profiles[!is.na(prev_profiles)]
+    all_profiles_named <- setNames(lapply(prev_profiles, parse_sig), prev_profiles)
+
+    curr_profiles <- unique(all_genome_profiles$profile_str[
+      all_genome_profiles$generation == gen])
+
+    for (prof_str in curr_profiles) {
+      if (prof_str %in% names(known_profiles)) next
+      prof_vec <- parse_sig(prof_str)
+      if (prof_str == "NA") {
+        lbl <- "REF"
+      } else if (gen == first_gen) {
+        lbl <- new_label("M")
+      } else {
+        parents <- find_recombinant_parents(prof_vec, all_profiles_named, recombination_threshold)
+        lbl <- if (!is.null(parents)) new_label("R") else new_label("M")
+      }
+      known_profiles[[prof_str]] <- prof_vec
+      hap_labels[[prof_str]]     <- lbl
+    }
+  }
+  hap_labels
+}
+
 # Classify whole-genome haplotypes for one population.
 # pop_df must have mut_sig (from assign_element_sigs) and log_sel_coeff columns.
 # Returns: generation, haplotype_id, profile_str, sequence (concatenated), freq, type, sel_coeff
 # checked, all good
-classify_genome_haplotypes <- function(pop_df) {
+classify_genome_haplotypes <- function(pop_df, population_id = 0L, global_labels) {
   generations <- sort(unique(pop_df$generation))
 
   genome_profiles <- pop_df %>%
@@ -214,18 +269,10 @@ classify_genome_haplotypes <- function(pop_df) {
       .groups     = "drop"
     )
   
-  # Build a named list of all profiles (across all generations) for recombinant
-  # detection – not reliant on the order in which generations are processed.
-
   known_profiles <- list()   # profile_str -> parsed vec  (profiles seen so far)
   known_types    <- list()   # profile_str -> haplotype type string
   known_parents  <- list()   # profile_str -> "P1,P2" or NA
-  hap_labels     <- list()   # profile_str -> short label
-  counters       <- list()   # prefix -> integer count (separate counter per prefix)
-  new_label <- function(prefix) {
-    counters[[prefix]] <<- if (is.null(counters[[prefix]])) 1L else counters[[prefix]] + 1L
-    paste0(prefix, counters[[prefix]])
-  }
+  hap_labels     <- list()   # profile_str -> full label (with population prefix)
   
   # determine how many generations present, adjust which generation to look for recombinants
   if (length(generations) > 1)
@@ -259,27 +306,22 @@ classify_genome_haplotypes <- function(pop_df) {
         prof_vec       <- parse_sig(prof_str)
         parent_str     <- NA_character_
         if (prof_str == "NA") {
-          htype <- "reference"; prefix <- "REF"
-        } else if (gen == generations[1L]) {
-          htype <- "founder"; prefix <- "F"
+          htype <- "reference"
         } else {
           parent_profiles <- find_recombinant_parents(prof_vec, all_profiles_named, threshold = recombination_threshold)
           if (!is.null(parent_profiles)) {
-            # Store parent profile strings now; labels are resolved after the loop.
             parent_str <- paste(parent_profiles, collapse = "||")
-            htype  <- "recombinant"; prefix <- "R"
+            htype <- if (gen == generations[1L]) "founder" else "recombinant"
           } else {
-            htype  <- "mutant"; prefix <- "M"
+            htype <- if (gen == generations[1L]) "founder" else "mutant"
           }
         }
+        base_label <- global_labels[[prof_str]]
+        if (is.null(base_label)) base_label <- paste0("?", substr(prof_str, 1L, 8L))
         known_profiles[[prof_str]] <- prof_vec
         known_types[[prof_str]]    <- htype
         known_parents[[prof_str]]  <- parent_str
-        if (prefix != "REF") {
-          hap_labels[[prof_str]]     <- new_label(prefix)
-        } else {
-          hap_labels[[prof_str]] <- "REF"
-        }
+        hap_labels[[prof_str]]     <- paste0("P", population_id, base_label)
       }
 
       rows[[length(rows) + 1]] <- data.frame(
@@ -316,9 +358,10 @@ message("Classifying whole-genome haplotypes per population...")
 
 hap_data_rds_file <- paste0(outpref, "_hap_data.rds")
 if (!file.exists(hap_data_rds_file)) { 
+  global_labels <- build_global_hap_labels(sample_meta, recombination_threshold)
   hap_data <- sample_meta %>%
     group_by(population_id) %>%
-    group_modify(~ classify_genome_haplotypes(.x)) %>%
+    group_modify(~ classify_genome_haplotypes(.x, .y$population_id, global_labels)) %>%
     ungroup()
   
   # Fill in zero-frequency rows so that every haplotype appears in every
@@ -394,18 +437,15 @@ if (length(unique(hap_data$population_id)) > 1) {
       select(-founding_gen)
 
     if (nrow(migrant_entries) > 0) {
-      migrant_counters <- list()  # per-population counter for "I" labels
       for (i in seq_len(nrow(migrant_entries))) {
         prof    <- migrant_entries$profile_str[i]
         pop     <- migrant_entries$population_id[i]
         src_pop <- migrant_entries$source_population_id[i]
         src_hap <- migrant_entries$source_haplotype_id[i]
         mask    <- hap_data$profile_str == prof & hap_data$population_id == pop
-        pop_key <- as.character(pop)
-        migrant_counters[[pop_key]] <- if (is.null(migrant_counters[[pop_key]])) 1L else migrant_counters[[pop_key]] + 1L
-        new_id  <- paste0("I", migrant_counters[[pop_key]])
-        hap_data$haplotype_id[mask]         <- new_id
-        hap_data$type[mask]                <- "migrant"
+        # haplotype_id is kept as-is: the shared global label number already
+        # links the migrant to its source (e.g. P0M3 migrated to P1M3).
+        hap_data$type[mask]                 <- "migrant"
         hap_data$source_population_id[mask] <- src_pop
         hap_data$source_haplotype_id[mask]  <- src_hap
       }
@@ -453,6 +493,17 @@ if (top_n > 0L) {
   hap_data <- hap_data %>%
     semi_join(top_haps, by = c("population_id", "haplotype_id"))
 }
+
+# Order haplotype_id factor levels by type so same-coloured areas stack
+# contiguously (avoids interleaved colour breaks in stacked area charts).
+type_stack_order <- c("reference", "founder", "mutant", "recombinant", "migrant")
+hap_id_levels <- hap_data %>%
+  distinct(haplotype_id, type) %>%
+  mutate(type = factor(type, levels = type_stack_order)) %>%
+  arrange(type, haplotype_id) %>%
+  pull(haplotype_id)
+hap_data <- hap_data %>%
+  mutate(haplotype_id = factor(haplotype_id, levels = hap_id_levels))
 
 # ── Plotting helpers ──────────────────────────────────────────────────────────
 n_pops        <- length(unique(hap_data$population_id))
