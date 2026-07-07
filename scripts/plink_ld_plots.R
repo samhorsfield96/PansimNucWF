@@ -60,9 +60,24 @@ ld_sym <- bind_rows(
 ) |>
   filter(CHR %in% chromosomes)
 
-p_heat <- ggplot(ld_sym, aes(x = pos_x, y = pos_y, fill = R2)) +
+# Bin genomic positions: geom_tile defaults to width/height = 1 bp, which is
+# invisible at chromosomal scales. Round to ~1/200 of each chromosome's span.
+n_bins    <- 200L
+bin_sizes <- ld_sym |>
+  group_by(CHR) |>
+  summarise(bin_size = diff(range(c(pos_x, pos_y))) / n_bins, .groups = "drop")
+ld_binned <- ld_sym |>
+  left_join(bin_sizes, by = "CHR") |>
+  mutate(
+    pos_x = round(pos_x / bin_size) * bin_size,
+    pos_y = round(pos_y / bin_size) * bin_size
+  ) |>
+  group_by(CHR, pos_x, pos_y, bin_size) |>
+  summarise(R2 = mean(R2, na.rm = TRUE), .groups = "drop")
+
+p_heat <- ggplot(ld_binned, aes(x = pos_x, y = pos_y, fill = R2)) +
   geom_blank(data = chr_blanks, aes(x = pos_x, y = pos_y), inherit.aes = FALSE) +
-  geom_tile() +
+  geom_tile(aes(width = bin_size, height = bin_size)) +
   facet_wrap(~CHR, scales = "free", ncol = 2) +
   scale_fill_gradientn(
     colours = c("white", "#4DBBD5", "#E64B35"),

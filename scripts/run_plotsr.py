@@ -105,4 +105,4 @@ def run_plot_synteny(reference : str, fasta_dir : str, output_dir : str, max_ali
     command = f"plotsr {plotsr_file_commands} --genomes {os.path.join(output_dir, 'genome_names.txt')} -o {os.path.join(output_dir, 'synteny_plot.pdf')} >> {log_file} 2>&1"
     subprocess.run(command, shell=True, check=True)
 
-run_plot_synteny(snakemake.input.reference, snakemake.input.fasta_dir, snakemake.params.output_dir, snakemake.params.max_alignments, snakemake.log[0], snakemake.params.minimap2_params, snakemake.threads, snakemake.params.FASTA_EXTENSIONS)
+run_plot_synteny(snakemake.input.reference, snakemake.params.fasta_dir, snakemake.params.output_dir, snakemake.params.max_alignments, snakemake.log[0], snakemake.params.minimap2_params, snakemake.threads, snakemake.params.FASTA_EXTENSIONS)

@@ -25,7 +25,6 @@ if IS_SIMULATED:
     PLOT_DFE_SCRIPT = os.path.join(workflow.basedir, "scripts/print_DFEs.R")
     HAPLOTYPES_TOP_N = config.get("haplotypes_top_n", 5)
 
-
 def resolve_sample_genome(sample):
     for extension in FASTA_EXTENSIONS:
         candidate = Path(GENOME_DIR) / f"{sample}{extension}"
@@ -68,12 +67,9 @@ rule all:
         f"{OUTPUT_DIR}/plink/ld_decay.ld",
         f"{OUTPUT_DIR}/plink/ld_heatmap.pdf",
         f"{OUTPUT_DIR}/plink/ld_decay_plot.pdf",
-        f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
-        f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_minor_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_all_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_sfs.csv",
-        f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",
         *([  # simulation-specific outputs, only when simulated: true
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_summary.csv",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_freq.pdf",
@@ -85,7 +81,11 @@ rule all:
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_mean_per_element.csv",
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_total_load.csv",
             f"{OUTPUT_DIR}/sv/sv_plot.pdf",
-        ] if IS_SIMULATED else []),
+        ] if IS_SIMULATED else [
+            f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
+            f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
+            f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",
+        ]),
         *([f"{OUTPUT_DIR}/dfe/dfe_plot.pdf"] if HAS_DFE_CSV else []),
 
 
@@ -244,21 +244,6 @@ rule plink_ld_plots:
     shell:
         "Rscript {params.script} {input.ld} {params.out_dir} {input.fai}"
 
-
-rule pegas_haplotype_analysis:
-    input:
-        vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz"
-    output:
-        tsv=f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
-        pdf=f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
-    params:
-        script=PEGAS_SCRIPT,
-        recombination_threshold=RECOMBINATION_THRESHOLD
-    conda:
-        "envs/pegas.yaml"
-    shell:
-        f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{output.pdf}} {params.recombination_threshold}"
-
 rule sfs_nuc_plot:
     input:
         vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz",
@@ -280,25 +265,6 @@ rule sfs_nuc_plot:
         "else "
         "Rscript {params.script} {input.vcf} {params.out_prefix}; "
         "fi"
-
-rule run_progressive_minimap2:
-    input:
-        reference=REFERENCE,
-        fasta_dir=GENOME_DIR,
-    output:
-        plot=f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",      
-    params:
-        minimap2_params=config.get("progressive_minimap2_params", "-ax asm5"),
-        max_alignments=config.get("synteny_alignments_n", 20),
-        output_dir=f"{OUTPUT_DIR}/synteny",
-        FASTA_EXTENSIONS=FASTA_EXTENSIONS,
-    threads: 40
-    log:
-        f"{OUTPUT_DIR}/logs/synteny.log"
-    conda:
-        "envs/synteny.yaml"
-    script:
-        "scripts/run_plotsr.py"
 
 if IS_SIMULATED:
 
@@ -377,3 +343,36 @@ if IS_SIMULATED:
                     f"mkdir -p {OUTPUT_DIR}/dfe && "
                     "Rscript {params.script} {params.dfe_csv} {params.out_prefix}"
                 )
+else:
+    rule pegas_haplotype_analysis:
+        input:
+            vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz"
+        output:
+            tsv=f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
+            pdf=f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
+        params:
+            script=PEGAS_SCRIPT,
+            recombination_threshold=RECOMBINATION_THRESHOLD
+        conda:
+            "envs/pegas.yaml"
+        shell:
+            f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{output.pdf}} {params.recombination_threshold}"
+
+    rule run_progressive_minimap2:
+        input:
+            reference=REFERENCE,
+        output:
+            plot=f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",      
+        params:
+            minimap2_params=config.get("progressive_minimap2_params", "-ax asm5"),
+            max_alignments=config.get("synteny_alignments_n", 20),
+            output_dir=f"{OUTPUT_DIR}/synteny",
+            FASTA_EXTENSIONS=FASTA_EXTENSIONS,
+            fasta_dir=GENOME_DIR,
+        threads: 40
+        log:
+            f"{OUTPUT_DIR}/logs/synteny.log"
+        conda:
+            "envs/synteny.yaml"
+        script:
+            "scripts/run_plotsr.py"

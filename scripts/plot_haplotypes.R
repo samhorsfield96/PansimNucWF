@@ -325,14 +325,15 @@ classify_genome_haplotypes <- function(pop_df, population_id = 0L, global_labels
       }
 
       rows[[length(rows) + 1]] <- data.frame(
-        generation   = gen,
-        haplotype_id = hap_labels[[prof_str]],
-        profile_str  = prof_str,
-        freq         = freq,
-        type         = known_types[[prof_str]],
-        parents      = known_parents[[prof_str]],
-        sel_coeff    = sel_coeff,
-        stringsAsFactors = FALSE
+        generation        = gen,
+        haplotype_id      = hap_labels[[prof_str]],
+        base_haplotype_id = global_labels[[prof_str]],
+        profile_str       = prof_str,
+        freq              = freq,
+        type              = known_types[[prof_str]],
+        parents           = known_parents[[prof_str]],
+        sel_coeff         = sel_coeff,
+        stringsAsFactors  = FALSE
       )
     }
   }
@@ -374,7 +375,7 @@ if (!file.exists(hap_data_rds_file)) {
       fill         = list(freq = 0)
     ) %>%
     group_by(population_id, haplotype_id) %>%
-    fill(type, profile_str, sel_coeff, .direction = "downup") %>%
+    fill(type, base_haplotype_id, profile_str, sel_coeff, .direction = "downup") %>%
     ungroup()
   
   saveRDS(hap_data, hap_data_rds_file)
@@ -496,6 +497,8 @@ if (top_n > 0L) {
 
 # Order haplotype_id factor levels by type so same-coloured areas stack
 # contiguously (avoids interleaved colour breaks in stacked area charts).
+# Population-prefixed labels (e.g. P0M3, P1M3) are unique, so distinct() is
+# sufficient — no deduplication needed.
 type_stack_order <- c("reference", "founder", "mutant", "recombinant", "migrant")
 hap_id_levels <- hap_data %>%
   distinct(haplotype_id, type) %>%
@@ -584,7 +587,7 @@ p_area <- ggplot(
   aes(
     x    = generation,
     y    = freq,
-    fill = haplotype_id,
+    fill = base_haplotype_id,
     group = haplotype_id
   )
 ) +
