@@ -15,6 +15,8 @@ SFS_NUC_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_sfs_nuc.R")
 OUTPUT_DIR = config["output_dir"]
 
 IS_SIMULATED = config.get("simulated", False)
+PLOT_SV = config.get("plot_SVs", False)
+PLOT_TEs = config.get("plot_TEs", False)
 DFE_CSV = f"{GENOME_DIR}/selection_samples.csv"
 HAS_DFE_CSV = IS_SIMULATED and Path(DFE_CSV).exists()
 
@@ -76,17 +78,20 @@ rule all:
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_composition.pdf",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_per_haplotype_composition.pdf",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_sel_coeff_composition.pdf",
+        ] if IS_SIMULATED else [
+            f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
+            f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
+        ]),
+        *([f"{OUTPUT_DIR}/sv/sv_plot.pdf"] if IS_SIMULATED and PLOT_SV else []),
+        *([ # simulation-specific outputs, only when simulated: true and plot_TEs: true
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_per_genome.csv",
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_distribution.csv",
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_mean_per_element.csv",
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_total_load.csv",
-            f"{OUTPUT_DIR}/sv/sv_plot.pdf",
-        ] if IS_SIMULATED else [
-            f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
-            f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
-            f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",
-        ]),
+        ] if PLOT_TEs and IS_SIMULATED else []),
+        *([f"{OUTPUT_DIR}/synteny/synteny_plot.pdf"] if not IS_SIMULATED and PLOT_SV else []),
         *([f"{OUTPUT_DIR}/dfe/dfe_plot.pdf"] if HAS_DFE_CSV else []),
+        
 
 
 rule index_reference:
@@ -293,55 +298,40 @@ if IS_SIMULATED:
                 "{params.top_n} {params.recombination_threshold}"
             )
 
-    rule plot_te_copy_numbers:
-        output:
-            per_genome=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_per_genome.csv",
-            distribution=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_distribution.csv",
-            mean_per_element=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_mean_per_element.csv",
-            total_load=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_total_load.csv",
-        params:
-            script=PLOT_TE_SCRIPT,
-            gff_dir=GENOME_DIR,
-            out_prefix=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers",
-        conda:
-            "envs/simulated.yaml"
-        shell:
-            (
-                f"mkdir -p {OUTPUT_DIR}/te_copy_numbers && "
-                "Rscript {params.script} {params.gff_dir} {params.out_prefix}"
-            )
-
-    rule plot_sv:
-        output:
-            f"{OUTPUT_DIR}/sv/sv_plot.pdf",
-        params:
-            script=PLOT_SV_SCRIPT,
-            root_gff=f"{GENOME_DIR}/root.gff",
-            sim_dir=GENOME_DIR,
-            max_alignments=config.get("synteny_alignments_n", 20),
-        conda:
-            "envs/simulated.yaml"
-        shell:
-            (
-                f"mkdir -p {OUTPUT_DIR}/sv && "
-                "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {output} --link-types exon,TE-COPY,TE-CUT --types exon,TE-COPY,TE-CUT --gap 500 --max-alignments {params.max_alignments}"
-            )
-
-    if HAS_DFE_CSV:
-
-        rule plot_dfe:
+    if PLOT_TEs:
+        rule plot_te_copy_numbers:
             output:
-                pdf=f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
+                per_genome=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_per_genome.csv",
+                distribution=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_distribution.csv",
+                mean_per_element=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_mean_per_element.csv",
+                total_load=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_total_load.csv",
             params:
-                script=PLOT_DFE_SCRIPT,
-                dfe_csv=DFE_CSV,
-                out_prefix=f"{OUTPUT_DIR}/dfe/dfe_plot",
+                script=PLOT_TE_SCRIPT,
+                gff_dir=GENOME_DIR,
+                out_prefix=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers",
             conda:
                 "envs/simulated.yaml"
             shell:
                 (
-                    f"mkdir -p {OUTPUT_DIR}/dfe && "
-                    "Rscript {params.script} {params.dfe_csv} {params.out_prefix}"
+                    f"mkdir -p {OUTPUT_DIR}/te_copy_numbers && "
+                    "Rscript {params.script} {params.gff_dir} {params.out_prefix}"
+                )
+
+    if PLOT_SV:
+        rule plot_sv:
+            output:
+                f"{OUTPUT_DIR}/sv/sv_plot.pdf",
+            params:
+                script=PLOT_SV_SCRIPT,
+                root_gff=f"{GENOME_DIR}/root.gff",
+                sim_dir=GENOME_DIR,
+                max_alignments=config.get("synteny_alignments_n", 20),
+            conda:
+                "envs/simulated.yaml"
+            shell:
+                (
+                    f"mkdir -p {OUTPUT_DIR}/sv && "
+                    "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {output} --link-types exon,TE-COPY,TE-CUT --types exon,TE-COPY,TE-CUT --gap 500 --max-alignments {params.max_alignments}"
                 )
 else:
     rule pegas_haplotype_analysis:
@@ -358,21 +348,39 @@ else:
         shell:
             f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{output.pdf}} {params.recombination_threshold}"
 
-    rule run_progressive_minimap2:
-        input:
-            reference=REFERENCE,
+    if PLOT_SV:
+        rule run_progressive_minimap2:
+            input:
+                reference=REFERENCE,
+            output:
+                plot=f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",      
+            params:
+                minimap2_params=config.get("progressive_minimap2_params", "-ax asm5"),
+                max_alignments=config.get("synteny_alignments_n", 20),
+                output_dir=f"{OUTPUT_DIR}/synteny",
+                FASTA_EXTENSIONS=FASTA_EXTENSIONS,
+                fasta_dir=GENOME_DIR,
+            threads: 40
+            log:
+                f"{OUTPUT_DIR}/logs/synteny.log"
+            conda:
+                "envs/synteny.yaml"
+            script:
+                "scripts/run_plotsr.py"
+
+if HAS_DFE_CSV:
+
+    rule plot_dfe:
         output:
-            plot=f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",      
+            pdf=f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
         params:
-            minimap2_params=config.get("progressive_minimap2_params", "-ax asm5"),
-            max_alignments=config.get("synteny_alignments_n", 20),
-            output_dir=f"{OUTPUT_DIR}/synteny",
-            FASTA_EXTENSIONS=FASTA_EXTENSIONS,
-            fasta_dir=GENOME_DIR,
-        threads: 40
-        log:
-            f"{OUTPUT_DIR}/logs/synteny.log"
+            script=PLOT_DFE_SCRIPT,
+            dfe_csv=DFE_CSV,
+            out_prefix=f"{OUTPUT_DIR}/dfe/dfe_plot",
         conda:
-            "envs/synteny.yaml"
-        script:
-            "scripts/run_plotsr.py"
+            "envs/simulated.yaml"
+        shell:
+            (
+                f"mkdir -p {OUTPUT_DIR}/dfe && "
+                "Rscript {params.script} {params.dfe_csv} {params.out_prefix}"
+            )
