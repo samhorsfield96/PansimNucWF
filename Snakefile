@@ -36,7 +36,7 @@ def extract_generation(name):
 
 
 def filter_to_final_generation(samples):
-    if not FINAL_GENERATION_ONLY:
+    if not FINAL_GENERATION_ONLY or not IS_SIMULATED:
         return samples
 
     parsed_generations = {sample: extract_generation(sample) for sample in samples}
