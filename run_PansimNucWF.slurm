@@ -15,11 +15,13 @@
 #SBATCH --array=0-242%10             # <-- Set to 0-(N_SAMPLES-1)
 ##SBATCH --array=0-2915%10             # <-- Set to 0-(N_SAMPLES-1)
 ##SBATCH --array=0-728%10             # <-- Set to 0-(N_SAMPLES-1)
+##SBATCH --array=0-1151%10             # <-- Set to 0-(N_SAMPLES-1)
+##SBATCH --array=0
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4        # Should match threads= in your .conf
-#SBATCH --mem=32G
-#SBATCH --time=48:00:00
-#SBATCH --partition=normal.168h   # Uncomment and set if required
+#SBATCH --cpus-per-task=1        # Should match threads= in your .conf
+#SBATCH --mem=4G
+#SBATCH --time=01:00:00
+#SBATCH --partition=normal.12h   # Uncomment and set if required
 ##SBATCH --mail-user=samuel.horsfield@unine.ch       # Uncomment and set if required
 ##SBATCH --mail-type=END,FAIL
 
@@ -34,6 +36,7 @@ SNAKEMAKE_DIR="/home/sam/Software/PansimNucWF"
 RELATIVE_SOURCE_PATH="mu_vs_selection_vs_recombination_grid"
 #RELATIVE_SOURCE_PATH="mu_vs_selection_vs_recombination_vs_TE_grid"
 #RELATIVE_SOURCE_PATH="mu_vs_selection_vs_recombination_vs_migration_grid"
+#RELATIVE_SOURCE_PATH="AGR_grid"
 
 # Base output directory for PansimNuc results (--outdir-base from lhs script)
 # Each run writes to $OUTDIR_BASE/run_<id>/
@@ -66,8 +69,8 @@ echo "========================================================"
 
 cd ${SNAKEMAKE_DIR}
 
-pixi run snakemake -s ${SNAKEMAKE_DIR}/Snakefile --directory ${RUN_OUTDIR} --configfile ${RUN_CONFIG} --cores $SLURM_CPUS_PER_TASK --use-conda --conda-prefix ${SNAKEMAKE_DIR}/.snakemake/conda --config reference=${RUN_INPUT_DIR}/root.fasta input_dir=${RUN_INPUT_DIR} output_dir=${RUN_OUTDIR} simulated="True" plot_SVs="False" plot_TEs="False" --unlock
-pixi run snakemake -s ${SNAKEMAKE_DIR}/Snakefile --directory ${RUN_OUTDIR} --configfile ${RUN_CONFIG} --cores $SLURM_CPUS_PER_TASK --use-conda --conda-prefix ${SNAKEMAKE_DIR}/.snakemake/conda --config reference=${RUN_INPUT_DIR}/root.fasta input_dir=${RUN_INPUT_DIR} output_dir=${RUN_OUTDIR} simulated="True" plot_SVs="False" plot_TEs="False" > "${RUN_OUTDIR}/pansimnucWF.log" 2>&1
+pixi run snakemake -s ${SNAKEMAKE_DIR}/Snakefile --directory ${RUN_OUTDIR} --configfile ${RUN_CONFIG} --cores $SLURM_CPUS_PER_TASK --use-conda --conda-prefix ${SNAKEMAKE_DIR}/.snakemake/conda --config reference=${RUN_INPUT_DIR}/root.fasta input_dir=${RUN_INPUT_DIR} output_dir=${RUN_OUTDIR} simulated="True" plot_SVs="False" plot_TEs="False" final_generation="True" --unlock
+pixi run snakemake -s ${SNAKEMAKE_DIR}/Snakefile --directory ${RUN_OUTDIR} --configfile ${RUN_CONFIG} --cores $SLURM_CPUS_PER_TASK --use-conda --conda-prefix ${SNAKEMAKE_DIR}/.snakemake/conda --config reference=${RUN_INPUT_DIR}/root.fasta input_dir=${RUN_INPUT_DIR} output_dir=${RUN_OUTDIR} simulated="True" plot_SVs="False" plot_TEs="False" final_generation="True" > "${RUN_OUTDIR}/pansimnucWF.log" 2>&1
 
 EXIT_CODE=$?
 

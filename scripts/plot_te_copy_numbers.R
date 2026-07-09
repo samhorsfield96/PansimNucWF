@@ -9,6 +9,7 @@ library(ggsci)
 
 args       <- commandArgs(trailingOnly = TRUE)
 args       <- args[!grepl("^--", args)]
+final_generation_only <- any(commandArgs(trailingOnly = TRUE) == "--final-generation")
 output_dir <- if (length(args) >= 1) args[1] else "."
 outpref    <- if (length(args) >= 2) args[2] else "te_copy_numbers"
 
@@ -20,6 +21,17 @@ if (!dir.exists(output_dir)) {
 
 gff_files <- list.files(output_dir, pattern = "^pop_\\d+_gen_\\d+_genome_\\d+\\.gff$",
                          full.names = TRUE)
+
+if (final_generation_only) {
+  generations <- suppressWarnings(
+    as.integer(sub(".*_gen_(\\d+)_genome_.*", "\\1", basename(gff_files)))
+  )
+  if (!all(is.na(generations))) {
+    last_generation <- max(generations, na.rm = TRUE)
+    gff_files <- gff_files[!is.na(generations) & generations == last_generation]
+    message("Restricting TE copy-number analysis to generation ", last_generation)
+  }
+}
 
 if (length(gff_files) == 0) {
   stop("No GFF files matching pop_<N>_gen_<N>_genome_<N>.gff found in: ", output_dir)

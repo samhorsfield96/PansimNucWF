@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 configfile: "config/config.yaml"
@@ -13,6 +14,7 @@ RECOMBINATION_THRESHOLD = config.get("pegas_recombination_threshold", 0.9)
 PLINK_PLOT_SCRIPT = os.path.join(workflow.basedir, "scripts/plink_ld_plots.R")
 SFS_NUC_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_sfs_nuc.R")
 OUTPUT_DIR = config["output_dir"]
+FINAL_GENERATION_ONLY = config.get("final_generation", False)
 
 IS_SIMULATED = config.get("simulated", False)
 PLOT_SV = config.get("plot_SVs", False)
@@ -26,6 +28,27 @@ if IS_SIMULATED:
     PLOT_SV_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_sv.R")
     PLOT_DFE_SCRIPT = os.path.join(workflow.basedir, "scripts/print_DFEs.R")
     HAPLOTYPES_TOP_N = config.get("haplotypes_top_n", 5)
+
+
+def extract_generation(name):
+    match = re.search(r"_gen_(\d+)_genome_", name)
+    return int(match.group(1)) if match else None
+
+
+def filter_to_final_generation(samples):
+    if not FINAL_GENERATION_ONLY:
+        return samples
+
+    parsed_generations = {sample: extract_generation(sample) for sample in samples}
+    generations = [generation for generation in parsed_generations.values() if generation is not None]
+    if not generations:
+        return samples
+
+    last_generation = max(generations)
+    return sorted(
+        sample for sample, generation in parsed_generations.items()
+        if generation == last_generation
+    )
 
 def resolve_sample_genome(sample):
     for extension in FASTA_EXTENSIONS:
@@ -54,11 +77,11 @@ def discover_samples():
     return sorted(set(discovered))
 
 
-SAMPLES = discover_samples()
+SAMPLES = filter_to_final_generation(discover_samples())
 
 if not SAMPLES:
     raise ValueError(
-        "No samples found. Add sample IDs to config['samples'] or provide FASTA files in input_dir."
+        "No samples found after applying the configured input filters. Provide FASTA files in input_dir or disable final_generation filtering."
     )
 
 
@@ -309,12 +332,13 @@ if IS_SIMULATED:
                 script=PLOT_TE_SCRIPT,
                 gff_dir=GENOME_DIR,
                 out_prefix=f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers",
+                final_generation_flag="--final-generation" if FINAL_GENERATION_ONLY else "",
             conda:
                 "envs/simulated.yaml"
             shell:
                 (
                     f"mkdir -p {OUTPUT_DIR}/te_copy_numbers && "
-                    "Rscript {params.script} {params.gff_dir} {params.out_prefix}"
+                        "Rscript {params.script} {params.gff_dir} {params.out_prefix} {params.final_generation_flag}"
                 )
 
     if PLOT_SV:
@@ -326,12 +350,13 @@ if IS_SIMULATED:
                 root_gff=f"{GENOME_DIR}/root.gff",
                 sim_dir=GENOME_DIR,
                 max_alignments=config.get("synteny_alignments_n", 20),
+                final_generation_flag="--final-generation" if FINAL_GENERATION_ONLY else "",
             conda:
                 "envs/simulated.yaml"
             shell:
                 (
                     f"mkdir -p {OUTPUT_DIR}/sv && "
-                    "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {output} --link-types exon,TE-COPY,TE-CUT --types exon,TE-COPY,TE-CUT --gap 500 --max-alignments {params.max_alignments}"
+                    "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {output} --link-types exon,TE-COPY,TE-CUT --types exon,TE-COPY,TE-CUT --gap 500 --max-alignments {params.max_alignments} {params.final_generation_flag}"
                 )
 else:
     rule pegas_haplotype_analysis:
@@ -360,6 +385,7 @@ else:
                 output_dir=f"{OUTPUT_DIR}/synteny",
                 FASTA_EXTENSIONS=FASTA_EXTENSIONS,
                 fasta_dir=GENOME_DIR,
+                final_generation_only=FINAL_GENERATION_ONLY,
             threads: 40
             log:
                 f"{OUTPUT_DIR}/logs/synteny.log"

@@ -101,6 +101,7 @@ r <- take_flag("--link-types", args, NULL);          link_types <- if (is.null(r
 r <- take_flag("--gap",        args, "500");         contig_gap <- as.integer(r$val); args <- r$args
 r <- take_switch("--no-links", args);                no_links   <- r$val; args <- r$args
 r <- take_flag("--max-alignments", args, "20");   max_alignments <- as.integer(r$val); args <- r$args
+r <- take_switch("--final-generation", args);      final_generation_only <- r$val; args <- r$args
 
 root_path <- args[1L]
 sim_directory <- args[-1L]
@@ -112,6 +113,17 @@ all_feats <- read_pansimnuc_gff(root_path, "root")
 
 sim_paths <- list.files(sim_directory, pattern = "*.gff", full.names = TRUE)
 sim_paths <- sim_paths[sim_paths != root_path]
+
+if (final_generation_only) {
+  generations <- suppressWarnings(
+    as.integer(sub(".*_gen_(\\d+)_genome_.*", "\\1", basename(sim_paths)))
+  )
+  if (!all(is.na(generations))) {
+    last_generation <- max(generations, na.rm = TRUE)
+    sim_paths <- sim_paths[!is.na(generations) & generations == last_generation]
+    message("Restricting SV plot input to generation ", last_generation)
+  }
+}
 
 # randomly downsample to max_alignments if there are more than max_alignments
 if (length(sim_paths) > max_alignments) {
