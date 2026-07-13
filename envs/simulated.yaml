@@ -13,3 +13,4 @@ dependencies:
   - r-gggenomes
   - r-ggnewscale
   - r-vcfr
+  - r-data.table

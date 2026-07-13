@@ -171,7 +171,8 @@ if (final_generation_only) {
 
 # randomly downsample to max_alignments if there are more than max_alignments
 if (length(sim_paths) > max_alignments) {
-  sim_paths <- sample(root_path, max_alignments)
+  message("Restricting SV plot total genomes from ", length(sim_paths), " to ", max_alignments)
+  sim_paths <- sample(sim_paths, max_alignments)
 }
 
 sim_paths <- c(root_path, sim_paths)
