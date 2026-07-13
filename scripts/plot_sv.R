@@ -26,44 +26,92 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(scales)
   library(tools)
+  library(stringi)
+  library(data.table)
 })
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-parse_attrs <- function(attr_string) {
-  pairs <- strsplit(attr_string, ";", fixed = TRUE)[[1L]]
-  keys  <- sub("=.*$",    "", pairs)
-  vals  <- sub("^[^=]+=", "", pairs)
-  setNames(vals, keys)
+extract_attr <- function(x, key) {
+  out <- sub(
+    paste0(".*(?:^|;)", key, "=([^;]+).*"),
+    "\\1",
+    x,
+    perl=TRUE
+  )
+  out[out == x] <- NA_character_
+  out
 }
 
-read_pansimnuc_gff <- function(path, bin_label) {
-  lines <- readLines(path, warn = FALSE)
-  lines <- lines[nchar(lines) > 0L & !startsWith(lines, "#")]
-  if (length(lines) == 0L) {
-    warning("No records found in: ", path)
+parse_gff <- function(path, bin_id) {
+  ids <- regmatches(
+    basename(path),
+    regexec("pop_(\\d+)_gen_(\\d+)_genome_(\\d+)", basename(path))
+  )[[1]]
+  
+  pop_id <- as.integer(ids[2])
+  generation <- as.integer(ids[3])
+  genome_id <- as.integer(ids[4])
+  
+  dt <- fread(
+    path,
+    sep="\t",
+    header=FALSE,
+    comment.char="#",
+    showProgress=FALSE
+  )
+  
+  if (nrow(dt) == 0)
     return(NULL)
-  }
-  rows <- lapply(lines, function(line) {
-    f <- strsplit(line, "\t", fixed = TRUE)[[1L]]
-    if (length(f) < 9L) return(NULL)
-    a <- parse_attrs(f[9L])
-    data.frame(
-      bin_id        = bin_label,
-      contig_name   = f[1L],
-      start         = as.integer(f[4L]),
-      end           = as.integer(f[5L]),
-      strand        = f[7L],
-      feature_type  = a[["feature_type"]],
-      element_id    = suppressWarnings(as.integer(a[["element_id"]])),
-      feature_id    = suppressWarnings(as.integer(a[["feature_id"]])),
-      multiplier    = suppressWarnings(as.numeric(a[["multiplier"]])),
-      log_sel_coeff = suppressWarnings(as.numeric(a[["log_element_selection_coefficient"]])),
-      log_genome_sel_coeff = suppressWarnings(as.numeric(a[["log_genome_selection_coefficient"]])),
-      stringsAsFactors = FALSE
-    )
-  })
-  bind_rows(Filter(Negate(is.null), rows))
+  
+  setnames(
+    dt,
+    c("contig_name","source","feature_type","start","end",
+      "score","strand","phase","attributes")
+  )
+  
+  dt[, element_id :=
+       as.integer(extract_attr(attributes, "element_id"))]
+  
+  dt[, log_genome_selection_coefficient :=
+       as.numeric(extract_attr(
+         attributes,
+         "log_genome_selection_coefficient"))]
+  
+  dt[, log_element_selection_coefficient :=
+       as.numeric(extract_attr(
+         attributes,
+         "log_element_selection_coefficient"))]
+  
+  dt[, multiplier :=
+       as.numeric(extract_attr(attributes, "multiplier"))]
+  
+  dt[, feature_id :=
+       as.numeric(extract_attr(attributes, "feature_id"))]
+  
+  dt[, `:=`(
+    pop_id = pop_id,
+    generation = generation,
+    genome_id = genome_id,
+    bin_id = bin_id
+  )]
+  
+  dt[, .(
+    bin_id,
+    pop_id,
+    generation,
+    genome_id,
+    contig_name,
+    start,
+    end,
+    strand,
+    feature_type,
+    element_id,
+    feature_id,
+    multiplier,
+    log_element_selection_coefficient,
+    log_genome_selection_coefficient
+  )]
 }
 
 # ── CLI argument parsing ──────────────────────────────────────────────────────
@@ -107,10 +155,6 @@ root_path <- args[1L]
 sim_directory <- args[-1L]
 
 # ── read data ─────────────────────────────────────────────────────────────────
-
-message("Reading root GFF: ", root_path)
-all_feats <- read_pansimnuc_gff(root_path, "root")
-
 sim_paths <- list.files(sim_directory, pattern = "*.gff", full.names = TRUE)
 sim_paths <- sim_paths[sim_paths != root_path]
 
@@ -127,15 +171,22 @@ if (final_generation_only) {
 
 # randomly downsample to max_alignments if there are more than max_alignments
 if (length(sim_paths) > max_alignments) {
-  sim_paths <- sample(sim_paths, max_alignments)
+  sim_paths <- sample(root_path, max_alignments)
 }
 
-for (i in seq_along(sim_paths)) {
-  filename <- basename(sim_paths[i])
-  label <- as.character(file_path_sans_ext(basename(filename)))
-  block <- read_pansimnuc_gff(sim_paths[i], label)
-  if (!is.null(block)) all_feats <- bind_rows(all_feats, block)
-}
+sim_paths <- c(root_path, sim_paths)
+
+message("Reading all GFFs...")
+all_feats <- rbindlist(
+  mapply(
+    parse_gff,
+    path = sim_paths,
+    bin_id = tools::file_path_sans_ext(basename(sim_paths)),
+    SIMPLIFY = FALSE
+  ),
+  use.names = TRUE,
+  fill = TRUE
+)
 
 if (is.null(all_feats) || nrow(all_feats) == 0L) {
   stop("No features loaded. Check that the GFF files are valid PansimNuc output.")
@@ -151,100 +202,201 @@ if (!is.null(keep_types)) {
 # and shift all feature coordinates into that linearized space. Each genome
 # becomes a single seq_id so gggenomes draws it as one track.
 
-# Per-contig length and numeric sort key
-contig_info <- all_feats |>
-  mutate(contig_num = as.integer(str_extract(contig_name, "[0-9]+"))) |>
-  group_by(bin_id, contig_name, contig_num) |>
-  summarise(contig_len = max(end), .groups = "drop") |>
-  arrange(bin_id, contig_num)
+# Extract contig number once
+all_feats[, contig_num :=
+            as.integer(stringi::stri_extract_first_regex(contig_name, "\\d+"))]
 
-contig_gap <- max(contig_info$contig_len) * 0.1  # 10% of max contig length
 
-# Cumulative left-edge offset within each genome
-contig_info <- contig_info |>
-  group_by(bin_id) |>
-  mutate(
-    offset      = cumsum(lag(contig_len + contig_gap, default = 0L)),
-    contig_rank = row_number()          # alternating shade index
-  ) |>
-  ungroup()
+contig_info <- all_feats[
+  ,
+  .(contig_len = max(end)),
+  by = .(bin_id, contig_name, contig_num)
+]
 
-# Contig block rectangles for background shading
-contig_blocks <- contig_info |>
-  transmute(
+contig_gap <- max(contig_info$contig_len) * 0.1
+
+# Calculate offsets
+contig_info[
+  ,
+  `:=`(
+    offset = cumsum(data.table::shift(contig_len + contig_gap, fill = 0)),
+    contig_rank = seq_len(.N)
+  ),
+  by = bin_id
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Contig blocks
+# ─────────────────────────────────────────────────────────────────────────────
+
+contig_blocks <- contig_info[
+  ,
+  .(
     bin_id,
-    seq_id       = bin_id,
-    start        = offset + 1L,
-    end          = offset + contig_len,
-    contig_name,
-    contig_shade = factor((contig_rank - 1L) %% 2L)  # "0" / "1" alternating
-  )
-
-# Shift all feature coordinates into linearized space
-all_feats <- all_feats |>
-  mutate(contig_num = as.integer(str_extract(contig_name, "[0-9]+"))) |>
-  left_join(select(contig_info, bin_id, contig_name, offset),
-            by = c("bin_id", "contig_name")) |>
-  mutate(
     seq_id = bin_id,
-    start  = start + offset,
-    end    = end   + offset
+    start = offset + 1L,
+    end = offset + contig_len,
+    contig_name,
+    contig_shade = factor((contig_rank - 1L) %% 2L)
   )
+]
 
-# ── seqs table ────────────────────────────────────────────────────────────────
-# One row per genome, ordered root first then numerically by genome index.
 
-seqs <- all_feats |>
-  group_by(bin_id) |>
-  summarise(seq_id = first(bin_id), length = max(end), .groups = "drop") |>
-  mutate(
-    sort_key = if_else(
-      bin_id == "root", -1L,
-      suppressWarnings(as.integer(str_extract(bin_id, "[0-9]+")))
-    )
-  ) |>
-  arrange(sort_key) |>
-  select(-sort_key)
+# ─────────────────────────────────────────────────────────────────────────────
+# Shift feature coordinates
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ── links table ───────────────────────────────────────────────────────────────
-# Connect every root element to matching elements in simulated genomes via
-# element_id. Crossed links = translocations; fan-out = duplications;
-# absent link = deletion.
+setkey(contig_info, bin_id, contig_name)
+
+all_feats[
+  contig_info,
+  offset := i.offset,
+  on = .(bin_id, contig_name)
+]
+
+all_feats[
+  ,
+  `:=`(
+    seq_id = bin_id,
+    start = start + offset,
+    end = end + offset
+  )
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sequence table
+# ─────────────────────────────────────────────────────────────────────────────
+
+seqs <- all_feats[
+  ,
+  .(
+    seq_id = first(bin_id),
+    length = max(end)
+  ),
+  by = bin_id
+]
+
+
+seqs[
+  ,
+  sort_key := fifelse(
+    bin_id == "root",
+    -1L,
+    as.integer(stringi::stri_extract_first_regex(bin_id, "\\d+"))
+  )
+]
+
+setorder(seqs, sort_key)
+seqs[, sort_key := NULL]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Links
+# ─────────────────────────────────────────────────────────────────────────────
+
+links <- NULL
+
 
 if (!no_links) {
-  ordered_genomes <- seqs$seq_id  # root, 0, 1, 2, ... in figure order
-
-  links_list <- vector("list", length(ordered_genomes) - 1L)
+  
+  ordered_genomes <- seqs$seq_id
+  
+  # Split once instead of repeatedly filtering
+  feat_split <- split(all_feats, by = "seq_id")
+  
+  
+  links_list <- vector(
+    "list",
+    length(ordered_genomes) - 1L
+  )
+  
+  
   for (i in seq_len(length(ordered_genomes) - 1L)) {
-    upper_anchors <- all_feats |>
-      filter(seq_id == ordered_genomes[i]) |>
-      select(seq_id = seq_id, start = start, end = end,
-             strand1 = strand, element_id, feature_type)
-
+    
+    upper <- feat_split[[ordered_genomes[i]]][
+      ,
+      .(
+        seq_id,
+        start,
+        end,
+        strand1 = strand,
+        element_id,
+        feature_type
+      )
+    ]
+    
+    
     if (!is.null(link_types)) {
-      upper_anchors <- filter(upper_anchors, feature_type %in% link_types)
+      upper <- upper[
+        feature_type %chin% link_types
+      ]
     }
-
-    lower_anchors <- all_feats |>
-      filter(seq_id == ordered_genomes[i + 1L]) |>
-      select(seq_id2 = seq_id, start2 = start, end2 = end,
-             strand2 = strand, element_id, feature_type2 = feature_type)
-
-    links_list[[i]] <- inner_join(upper_anchors, lower_anchors,
-                                  by = "element_id",
-                                  relationship = "many-to-many") |>
-      select(element_id, seq_id, start, end, strand1,
-             seq_id2, start2, end2, strand2, feature_type, feature_type2)
+    
+    
+    lower <- feat_split[[ordered_genomes[i + 1L]]][
+      ,
+      .(
+        seq_id2 = seq_id,
+        start2 = start,
+        end2 = end,
+        strand2 = strand,
+        element_id,
+        feature_type2 = feature_type
+      )
+    ]
+    
+    
+    links_list[[i]] <- merge(
+      upper,
+      lower,
+      by = "element_id",
+      allow.cartesian = TRUE
+    )[
+      ,
+      .(
+        element_id,
+        seq_id,
+        start,
+        end,
+        strand1,
+        seq_id2,
+        start2,
+        end2,
+        strand2,
+        feature_type,
+        feature_type2
+      )
+    ]
   }
-
-  links <- bind_rows(links_list)
-  links$strand <- ifelse(links$strand1 == links$strand2, "+", "-")
-  if (nrow(links) == 0L) links <- NULL
-} else {
-  links <- NULL
+  
+  
+  links <- rbindlist(
+    links_list,
+    use.names = TRUE,
+    fill = TRUE
+  )
+  
+  
+  if (nrow(links) > 0) {
+    links[
+      ,
+      strand := fifelse(
+        strand1 == strand2,
+        "+",
+        "-"
+      )
+    ]
+  } else {
+    links <- NULL
+  }
 }
 
-# ── colour palette ────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Colours
+# ─────────────────────────────────────────────────────────────────────────────
 
 feature_colors <- c(
   exon       = "#4DAF4A",
@@ -253,85 +405,142 @@ feature_colors <- c(
   "TE-CUT"   = "#E41A1C",
   "TE-COPY"  = "#FF7F00"
 )
-extra_types <- setdiff(unique(all_feats$feature_type), names(feature_colors))
-if (length(extra_types) > 0L) {
+
+
+extra_types <- setdiff(
+  all_feats[, unique(feature_type)],
+  names(feature_colors)
+)
+
+
+if (length(extra_types) > 0) {
   feature_colors <- c(
     feature_colors,
-    setNames(hue_pal()(length(extra_types)), extra_types)
+    setNames(
+      hue_pal()(length(extra_types)),
+      extra_types
+    )
   )
 }
 
-# ── plot dimensions ───────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Plot dimensions
+# ─────────────────────────────────────────────────────────────────────────────
 
 n_bins <- nrow(seqs)
 
-# calculate max sequence length across all genomes for default height scaling (1 inch per 10 Mbp)
 max_seq_len <- max(seqs$length)
-# one inch per 0.5 Mb maximum
-if (is.null(p_width)) p_width <- min(max(max_seq_len / 2.5e5, 7), 49.9)
-if (is.null(p_height)) p_height <- min(max(4.0, n_bins * 0.3), 49.9)
 
-# ── build gggenomes plot ──────────────────────────────────────────────────────
 
-if (!no_links && !is.null(links) && nrow(links) > 0L) {
+if (is.null(p_width))
+  p_width <- min(max(max_seq_len / 2.5e5, 7), 49.9)
+
+if (is.null(p_height))
+  p_height <- min(max(4.0, n_bins * 0.3), 49.9)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Build gggenomes plot
+# ─────────────────────────────────────────────────────────────────────────────
+
+if (!no_links &&
+    !is.null(links) &&
+    nrow(links) > 0) {
+  
   p <- gggenomes(
-    seqs  = seqs,
-    genes = all_feats,
-    links = links,
-    feats = list(contigs = contig_blocks)
+    seqs = as.data.frame(seqs),
+    genes = as.data.frame(all_feats),
+    links = as.data.frame(links),
+    feats = list(
+      contigs = as.data.frame(contig_blocks)
+    )
   )
+  
 } else {
+  
   p <- gggenomes(
-    seqs  = seqs,
-    genes = all_feats,
-    feats = list(contigs = contig_blocks)
+    seqs = as.data.frame(seqs),
+    genes = as.data.frame(all_feats),
+    feats = list(
+      contigs = as.data.frame(contig_blocks)
+    )
   )
 }
 
-# Layer 1 — alternating contig background shading
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Plot layers
+# ─────────────────────────────────────────────────────────────────────────────
+
 p <- p +
   geom_feat(
-    data        = feats("contigs"),
-    aes(colour    = contig_shade),
-    alpha       = 0.12,
-    linewidth   = NA,
+    data = feats("contigs"),
+    aes(colour = contig_shade),
+    alpha = 0.12,
+    linewidth = NA,
     show.legend = FALSE
   ) +
   scale_colour_manual(
-    values = c("0" = "#AAAAAA", "1" = "#555555"),
-    guide  = "none"
-  )
-
-# Layer 2 — sequence backbone and genome labels
-p <- p +
+    values = c(
+      "0" = "#AAAAAA",
+      "1" = "#555555"
+    ),
+    guide = "none"
+  ) +
   geom_seq() +
   geom_seq_label()
 
-# Layer 3 — synteny ribbons coloured by feature type
-if (!no_links && !is.null(links) && nrow(links) > 0L) {
+
+if (!no_links &&
+    !is.null(links) &&
+    nrow(links) > 0) {
+  
   p <- p +
     geom_link(
       aes(fill = feature_type),
-      alpha  = 0.28,
+      alpha = 0.28,
       colour = NA
-    ) + scale_fill_manual(
-      values = feature_colors, na.value = "grey60",
-      name   = "Feature type"
+    ) +
+    scale_fill_manual(
+      values = feature_colors,
+      na.value = "grey60",
+      name = "Feature type"
     ) +
     new_scale_fill()
 }
 
-# Layer 4 — gene features
+
 p <- p +
-  geom_gene(aes(fill = feature_type)) +
+  geom_gene(
+    aes(fill = feature_type)
+  ) +
   scale_fill_manual(
-    values = feature_colors, na.value = "grey60",
-    name   = "Feature type"
+    values = feature_colors,
+    na.value = "grey60",
+    name = "Feature type"
   ) +
   theme_gggenomes_clean()
 
-# ── save ──────────────────────────────────────────────────────────────────────
 
-message(sprintf("Writing %s  (%.0f x %.0f in)", out_file, p_width, p_height))
-ggsave(out_file, p, width = p_width, height = p_height)
+# ─────────────────────────────────────────────────────────────────────────────
+# Save
+# ─────────────────────────────────────────────────────────────────────────────
+
+message(
+  sprintf(
+    "Writing %s (%.1f x %.1f in)",
+    out_file,
+    p_width,
+    p_height
+  )
+)
+
+ggsave(
+  out_file,
+  p,
+  width = p_width,
+  height = p_height
+)
+
 message("Done.")
