@@ -9,10 +9,6 @@ final_generation_only <- any(commandArgs(trailingOnly = TRUE) == "--final-genera
 output_dir <- if (length(args) >= 1) args[1] else "."
 outpref <- if (length(args) >= 2) args[2] else "te_copy_numbers"
 
-output_dir <- "/Users/samhorsfield/Software/PansimNucWF/testing_simple_haplotype_multi_gen"
-outpref <- "/Users/samhorsfield/Software/PansimNucWF/testing_simple_haplotype_multi_gen/te_testing"
-final_generation_only <- TRUE
-
 if (!dir.exists(output_dir))
     stop("Output directory does not exist: ", output_dir)
 
