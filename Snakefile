@@ -6,7 +6,7 @@ configfile: "config/config.yaml"
 
 REFERENCE = config["reference"]
 GENOME_DIR = config["input_dir"]
-FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna"])
+FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna", ".fasta.gz", ".fa.gz", ".fna.gz"])
 MINIMAP2_INDEX = REFERENCE + ".mmi"
 REFERENCE_FAI  = REFERENCE + ".fai"
 PEGAS_SCRIPT = os.path.join(workflow.basedir, "scripts/pegas_haplotype_analysis.R")

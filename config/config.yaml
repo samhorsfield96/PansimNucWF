@@ -1,7 +1,7 @@
 reference: "root.fasta"
 input_dir: "analysis"
 output_dir: "results"
-fasta_extensions: [".fasta", ".fa", ".fna"]
+fasta_extensions: [".fasta", ".fa", ".fna", ".fasta.gz", ".fa.gz", ".fna.gz"]
 
 # minimap2 alignment preset. Options: asm5 (<1% divergence), asm10 (<10%), asm20 (<20%)
 minimap2_preset: "asm5"
