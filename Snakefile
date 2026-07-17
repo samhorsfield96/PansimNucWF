@@ -4,11 +4,12 @@ from pathlib import Path
 
 configfile: "config/config.yaml"
 
-REFERENCE = config["reference"]
+REFERENCE_FASTA = config["reference_fasta"]
+REFERENCE_GFF = config["reference_gff"]
 GENOME_DIR = config["input_dir"]
 FASTA_EXTENSIONS = config.get("fasta_extensions", [".fasta", ".fa", ".fna", ".fasta.gz", ".fa.gz", ".fna.gz"])
-MINIMAP2_INDEX = REFERENCE + ".mmi"
-REFERENCE_FAI  = REFERENCE + ".fai"
+MINIMAP2_INDEX = REFERENCE_FASTA + ".mmi"
+REFERENCE_FAI  = REFERENCE_FASTA + ".fai"
 PEGAS_SCRIPT = os.path.join(workflow.basedir, "scripts/pegas_haplotype_analysis.R")
 RECOMBINATION_THRESHOLD = config.get("pegas_recombination_threshold", 0.9)
 PLINK_PLOT_SCRIPT = os.path.join(workflow.basedir, "scripts/plink_ld_plots.R")
@@ -66,7 +67,7 @@ def resolve_sample_genome(sample):
 
 
 def discover_samples():
-    ref_resolved = str(Path(REFERENCE).resolve())
+    ref_resolved = str(Path(REFERENCE_FASTA).resolve())
     discovered = []
     for extension in FASTA_EXTENSIONS:
         pattern = str(Path(GENOME_DIR) / "{sample}") + extension
@@ -119,7 +120,7 @@ rule all:
 
 rule index_reference:
     input:
-        REFERENCE
+        REFERENCE_FASTA
     output:
         MINIMAP2_INDEX
     conda:
@@ -130,7 +131,7 @@ rule index_reference:
 
 rule faidx_reference:
     input:
-        REFERENCE
+        REFERENCE_FASTA
     output:
         REFERENCE_FAI
     conda:
@@ -142,7 +143,7 @@ rule faidx_reference:
 rule align_sample:
     input:
         ref_index=MINIMAP2_INDEX,
-        ref=REFERENCE,
+        ref=REFERENCE_FASTA,
         genome=lambda wc: resolve_sample_genome(wc.sample),
     output:
         paf=f"{OUTPUT_DIR}/alignment/{{sample}}.paf.gz",
@@ -164,7 +165,7 @@ rule align_sample:
 rule call_variants_paftools:
     input:
         paf=f"{OUTPUT_DIR}/alignment/{{sample}}.paf.gz",
-        ref=REFERENCE,
+        ref=REFERENCE_FASTA,
         fai=REFERENCE_FAI,
     output:
         vcf=f"{OUTPUT_DIR}/variants/per_sample/{{sample}}.vcf.gz",
@@ -347,7 +348,7 @@ if IS_SIMULATED:
                 f"{OUTPUT_DIR}/sv/sv_plot.pdf",
             params:
                 script=PLOT_SV_SCRIPT,
-                root_gff=f"{GENOME_DIR}/root.gff",
+                root_gff=REFERENCE_GFF,
                 sim_dir=GENOME_DIR,
                 max_alignments=config.get("synteny_alignments_n", 20),
                 final_generation_flag="--final-generation" if FINAL_GENERATION_ONLY else "",
@@ -376,7 +377,7 @@ else:
     if PLOT_SV:
         rule run_progressive_minimap2:
             input:
-                reference=REFERENCE,
+                reference=REFERENCE_FASTA,
             output:
                 plot=f"{OUTPUT_DIR}/synteny/synteny_plot.pdf",      
             params:

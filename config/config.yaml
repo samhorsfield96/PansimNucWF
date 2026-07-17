@@ -1,4 +1,5 @@
-reference: "root.fasta"
+reference_fasta: "root.fasta"
+reference_gff: "root.gff"
 input_dir: "analysis"
 output_dir: "results"
 fasta_extensions: [".fasta", ".fa", ".fna", ".fasta.gz", ".fa.gz", ".fna.gz"]
