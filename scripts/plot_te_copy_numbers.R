@@ -14,7 +14,7 @@ if (!dir.exists(output_dir))
 
 gff_files <- list.files(
     output_dir,
-    pattern="^pop_\\d+_gen_\\d+_genome_\\d+\\.gff$",
+    pattern="^pop_\\d+_gen_\\d+_genome_\\d+\\.gff",
     full.names=TRUE
 )
 
