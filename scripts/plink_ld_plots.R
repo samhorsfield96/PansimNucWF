@@ -117,12 +117,34 @@ p_decay <- ggplot(decay, aes(x = distance, y = mean_r2)) +
   theme_light(base_size = 11) +
   theme(strip.text = element_text(size = 8))
 
+# alternative decay plot
+decay_other <- ld |>
+  mutate(dist = BP_B - BP_A) %>%
+  select(dist, R2) %>%
+  arrange(dist)
+
+decay_other$dists <- cut(decay_other$dist,
+                                breaks=seq(from=min(decay_other$dist)-1,
+                                           to=max(decay_other$dist)+1,
+                                           by=1000)) # by=10 makes it more detailed
+
+decay_other_plot <- decay_other %>% group_by(dists) %>% summarise(mean=mean(R2), median=median(R2))
+decay_other_plot <- decay_other_plot %>% mutate(start=as.integer(str_extract(str_replace_all(dists,"[\\(\\)\\[\\]]",""),"^[0-9-e+.]+")),
+                              end=as.integer(str_extract(str_replace_all(dists,"[\\(\\)\\[\\]]",""),"[0-9-e+.]+$")),
+                              mid=start+((end-start)/2))
+
+p_decay_other <- ggplot()+
+  geom_line(data = decay_other_plot, aes(x = start, y = mean), linewidth = 0.6, alpha = 0.8)+
+  labs(x = "Distance (bp)", y = expression(Mean~r^2)) +
+  theme_light(base_size = 11)
+
 # ── Save ──────────────────────────────────────────────────────────────────────
 n_chr    <- length(chromosomes)
 heat_h   <- max(4, ceiling(n_chr / 2) * 4)
 decay_h  <- max(4, ceiling(n_chr / 2) * 3)
 
 ggsave(file.path(output_dir, "ld_heatmap.pdf"),   p_heat,  width = 10, height = heat_h,  limitsize = FALSE)
-ggsave(file.path(output_dir, "ld_decay_plot.pdf"), p_decay, width = 10, height = decay_h, limitsize = FALSE)
+ggsave(file.path(output_dir, "ld_decay_plot_per_dist.pdf"), p_decay, width = 10, height = decay_h, limitsize = FALSE)
+ggsave(file.path(output_dir, "ld_decay_plot_mean.pdf"), p_decay_other, width = 10, height = decay_h, limitsize = FALSE)
 
 message("Plots written to ", output_dir)
