@@ -284,16 +284,12 @@ rule sfs_nuc_plot:
     params:
         script=SFS_NUC_SCRIPT,
         out_prefix=f"{OUTPUT_DIR}/sfs/sfs_nuc",
-        gff=config.get("reference_gff", ""),
+        gff=REFERENCE_GFF,
     conda:
         "envs/sfs_nuc.yaml"
     shell:
         f"mkdir -p {OUTPUT_DIR}/sfs && "
-        "if [ -n \"{params.gff}\" ]; then "
-        "Rscript {params.script} {input.vcf} {params.gff} {params.out_prefix}; "
-        "else "
-        "Rscript {params.script} {input.vcf} {params.out_prefix}; "
-        "fi"
+        "Rscript {params.script} {input.vcf} {params.out_prefix}"
 
 if IS_SIMULATED:
 

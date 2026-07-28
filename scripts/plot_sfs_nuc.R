@@ -18,7 +18,7 @@ library(vcfR)
 args       <- commandArgs(trailingOnly = TRUE)
 args       <- args[!grepl("^--", args)]
 if (length(args) < 1L)
-  stop("Usage: Rscript plot_sfs_nuc.R <vcf_file> [gff_annotation] [output_prefix]")
+  stop("Usage: Rscript plot_sfs_nuc.R <vcf_file> [output_prefix]")
 
 vcf_file   <- args[1L]
 out_prefix <- if (length(args) >= 2L && nchar(args[2L]) > 0L) args[2L] else "sfs_nuc"
