@@ -43,8 +43,11 @@ if (ncol(gt_mat) == 0L) stop("No samples found in VCF.")
 variants <- data.frame(
   chrom = getCHROM(vcf),
   pos   = as.integer(getPOS(vcf)),
+  ref   = getREF(vcf),
+  alt   = getALT(vcf),
   stringsAsFactors = FALSE
 )
+
 message("Loaded ", nrow(variants), " variant site(s) across ",
         ncol(gt_mat), " sample(s).")
 
@@ -112,6 +115,54 @@ all_sites <- bind_rows(sfs_list) |>
 if (nrow(all_sites) == 0L) stop("No variable sites found in VCF.")
 
 sfs_data <- all_sites
+
+# generate SNP density
+
+# Keep only biallelic SNPs
+variants_SNPs <- variants[
+  nchar(variants$ref) == 1 &
+  nchar(variants$alt) == 1,
+]
+# 1000 bins by default
+max_pos <- max(variants_SNPs$pos)
+nbins <- 1000
+window_size <- ceiling(max_pos / nbins)
+
+snp_density <- do.call(rbind, lapply(split(variants_SNPs, variants_SNPs$chrom), function(df) {
+
+  max_pos <- max(df$pos)
+
+  windows <- data.frame(
+    start = seq(1, max_pos, by = window_size)
+  )
+
+  windows$end <- windows$start + window_size - 1
+
+  windows$n_snps <- sapply(seq_len(nrow(windows)), function(i) {
+    sum(df$pos >= windows$start[i] &
+        df$pos <= windows$end[i])
+  })
+
+  windows$density <- windows$n_snps / window_size
+
+  windows$chrom <- df$chrom[1]
+
+  windows
+}))
+
+snp_density <- snp_density[order(snp_density$chrom, snp_density$start), ]
+
+chr_lengths <- aggregate(end ~ chrom, snp_density, max)
+
+chr_lengths$cumstart <- c(0, cumsum(chr_lengths$end[-nrow(chr_lengths)]))
+
+snp_density <- merge(
+  snp_density,
+  chr_lengths[, c("chrom", "cumstart")],
+  by = "chrom"
+)
+
+snp_density$cumpos <- snp_density$start + snp_density$cumstart
 
 # ── Plot ──────────────────────────────────────────────────────────────────────
 n_genomes_per_group <- sample_meta |>
@@ -187,6 +238,15 @@ p_both_density <- ggplot(stacked_sfs_data, aes(x = value, fill = variable)) +
   theme_light(base_size = 11) +
   theme(strip.text = element_text(size = 9))
 
+p_SNP_density <- ggplot(snp_density, aes(cumpos, density)) +
+  geom_line() +
+  theme_classic() +
+  labs(
+    x = "Genome position",
+    y = "SNP density"
+  )
+p_SNP_density
+
 # ── Save ──────────────────────────────────────────────────────────────────────
 n_pops  <- n_distinct(sfs_data$pop_id)
 n_gens  <- n_distinct(sfs_data$gen_id)
@@ -200,6 +260,10 @@ message("Saved: ", out_pdf)
 
 out_pdf <- paste0(out_prefix, "_density_all_alleles.pdf")
 ggsave(out_pdf, plot = p_both_density, width = pdf_w, height = pdf_h, limitsize = FALSE)
+message("Saved: ", out_pdf)
+
+out_pdf <- paste0(out_prefix, "_snp_density.pdf")
+ggsave(out_pdf, plot = p_SNP_density, width = pdf_w, height = pdf_h, limitsize = FALSE)
 message("Saved: ", out_pdf)
 
 out_csv <- paste0(out_prefix, "_sfs.csv")
