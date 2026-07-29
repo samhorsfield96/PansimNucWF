@@ -15,4 +15,3 @@ dependencies:
   - r-vcfr
   - r-data.table
   - r-r.utils
-  - r-stringr

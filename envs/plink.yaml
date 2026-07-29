@@ -6,3 +6,4 @@ dependencies:
   - bcftools
   - r-ggplot2
   - r-dplyr
+  - r-stringr
