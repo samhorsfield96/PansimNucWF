@@ -238,13 +238,30 @@ p_both_density <- ggplot(stacked_sfs_data, aes(x = value, fill = variable)) +
   theme_light(base_size = 11) +
   theme(strip.text = element_text(size = 9))
 
+mean_density <- mean(snp_density$density, na.rm = TRUE)
+sd_density <- sd(snp_density$density, na.rm = TRUE)
+
 p_SNP_density <- ggplot(snp_density, aes(cumpos, density)) +
   geom_line() +
+  geom_hline(yintercept = mean_density,
+             colour = "blue",
+             linetype = "solid",
+             linewidth = 1) +
+  geom_hline(yintercept = mean_density + sd_density,
+             colour = "red",
+             linetype = "dashed") +
   theme_classic() +
   labs(
     x = "Genome position",
     y = "SNP density"
   )
+
+if (mean_density - sd_density > 0) {
+  p_SNP_density <= p_SNP_density + geom_hline(yintercept = mean_density - sd_density,
+             colour = "red",
+             linetype = "dashed")
+}
+
 p_SNP_density
 
 # ── Save ──────────────────────────────────────────────────────────────────────
