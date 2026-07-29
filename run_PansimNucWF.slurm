@@ -16,6 +16,7 @@
 ##SBATCH --array=0-575%10             # <-- Set to 0-(N_SAMPLES-1)
 ##SBATCH --array=0-242%10             # <-- Set to 0-(N_SAMPLES-1)
 ##SBATCH --array=0-575%10             # <-- Set to 0-(N_SAMPLES-1)
+#SBATCH --array=1-4
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1        # Should match threads= in your .conf
 #SBATCH --mem=4G
@@ -35,7 +36,8 @@ SNAKEMAKE_DIR="/home/sam/Software/PansimNucWF"
 #RELATIVE_SOURCE_PATH="mu_vs_selection_vs_recombination_grid"
 #RELATIVE_SOURCE_PATH="mu_vs_selection_vs_recombination_vs_TE_grid"
 #RELATIVE_SOURCE_PATH="mu_vs_selection_vs_recombination_vs_migration_grid"
-RELATIVE_SOURCE_PATH="AGR_grid"
+#RELATIVE_SOURCE_PATH="AGR_grid"
+RELATIVE_SOURCE_PATH="mu_vs_selection_vs_recombination_vs_TE_grid/poster_runs"
 
 # Base output directory for PansimNuc results (--outdir-base from lhs script)
 # Each run writes to $OUTDIR_BASE/run_<id>/

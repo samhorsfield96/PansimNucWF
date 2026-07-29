@@ -16,6 +16,7 @@ input_fai  <- if (length(args) == 3) args[[3]] else NULL
 suppressPackageStartupMessages({
   library(ggplot2)
   library(dplyr)
+  library(stringr)
 })
 
 ld <- read.table(input_ld, header = TRUE, stringsAsFactors = FALSE)
