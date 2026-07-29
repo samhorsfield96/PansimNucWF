@@ -92,7 +92,8 @@ rule all:
         f"{OUTPUT_DIR}/variants/filtered_variants.vcf.gz.tbi",
         f"{OUTPUT_DIR}/plink/ld_decay.ld",
         f"{OUTPUT_DIR}/plink/ld_heatmap.pdf",
-        f"{OUTPUT_DIR}/plink/ld_decay_plot.pdf",
+        f"{OUTPUT_DIR}/plink/ld_decay_plot_mean.pdf",
+        f"{OUTPUT_DIR}/plink/ld_decay_plot_per_dist.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_minor_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_all_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_sfs.csv",
@@ -264,7 +265,8 @@ rule plink_ld_plots:
         fai=REFERENCE_FAI,
     output:
         heatmap=f"{OUTPUT_DIR}/plink/ld_heatmap.pdf",
-        decay=f"{OUTPUT_DIR}/plink/ld_decay_plot.pdf",
+        decay_mean=f"{OUTPUT_DIR}/plink/ld_decay_plot_mean.pdf",
+        decay_per_dist=f"{OUTPUT_DIR}/plink/ld_decay_plot_per_dist.pdf"
     params:
         script=PLINK_PLOT_SCRIPT,
         out_dir=f"{OUTPUT_DIR}/plink",
