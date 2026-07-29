@@ -248,13 +248,14 @@ rule plink_ld_decay:
         out_prefix=f"{OUTPUT_DIR}/plink/ld_decay",
         ld_window=config.get("plink_ld_window", 99999),
         ld_window_kb=config.get("plink_ld_window_kb", 1000),
+        mac=config.get("plink_minimum_allele_count", 2),
     conda:
         "envs/plink.yaml"
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/plink && "
             "plink --threads {threads} --vcf {input.vcf} --double-id --allow-extra-chr --memory 8000 "
-            "--mac 1 --r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
+            "--mac {params.mac} --r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
             "--ld-window-r2 0 --out {params.out_prefix}"
         )
 

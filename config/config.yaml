@@ -5,7 +5,7 @@ output_dir: "results"
 fasta_extensions: [".fasta", ".fa", ".fna", ".fasta.gz", ".fa.gz", ".fna.gz"]
 
 # minimap2 alignment preset. Options: asm5 (<1% divergence), asm10 (<10%), asm20 (<20%)
-minimap2_preset: "asm5"
+minimap2_preset: "asm20"
 
 # paftools parameters for variant calling.
 paftools_preset: "-l 1 -L 1"
@@ -17,6 +17,7 @@ variant_calling_min_quality: 20
 # plink parameters for LD pruning. Set plink_ld_window to a large number to disable window-based pruning and only use plink_ld_window_kb.
 plink_ld_window: 99999
 plink_ld_window_kb: 1000
+plink_minimum_allele_count: 2
 
 # number of synteny alignments to retain per sample for synteny-based analyses. Does not include root.
 synteny_alignments_n: 20

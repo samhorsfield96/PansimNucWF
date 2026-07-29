@@ -262,8 +262,6 @@ if (mean_density - sd_density > 0) {
              linetype = "dashed")
 }
 
-p_SNP_density
-
 # ── Save ──────────────────────────────────────────────────────────────────────
 n_pops  <- n_distinct(sfs_data$pop_id)
 n_gens  <- n_distinct(sfs_data$gen_id)
