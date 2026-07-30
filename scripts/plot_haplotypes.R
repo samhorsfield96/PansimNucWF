@@ -50,10 +50,11 @@ parse_attrs <- function(attr_str) {
 
 # read the start of gff files to get selection coefficients for mutations, if available
 get_gff_data <- function(gff_dir) {
-  gff_files <- list.files(gff_dir, pattern = "\\.gff$", full.names = TRUE)
+  gff_files <- list.files(gff_dir, pattern = "\\.gff(\\.gz)?$", full.names = TRUE)
   sel_coeffs <- data.frame(chrom = character(), pos = integer(), sel_coeff = numeric(), stringsAsFactors = FALSE)
   rows <- lapply(gff_files, function(gff_file) {
-    base <- file_path_sans_ext(basename(gff_file))
+    # remove all extensions including compression
+    base <- file_path_sans_ext(file_path_sans_ext(basename(gff_file)))
     parsed <- parse_sample_name(base)
     if (is.null(parsed)) {
       # skip files with unparseable names, but warn if any found
@@ -87,6 +88,7 @@ get_gff_data <- function(gff_dir) {
         element_id   = suppressWarnings(as.integer(a[["element_id"]])),
         feature_type = a[["feature_type"]],
         log_sel_coeff = suppressWarnings(as.numeric(a[["log_genome_selection_coefficient"]])),
+        log_sel_prob = suppressWarnings(as.numeric(a[["log_genome_selection_probability"]])),
         stringsAsFactors = FALSE
       )
     }
