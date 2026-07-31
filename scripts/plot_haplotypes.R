@@ -460,6 +460,107 @@ if (length(unique(hap_data$population_id)) > 1) {
     } else {
       message("No migration events detected (shared profiles appeared simultaneously).")
     }
+
+    # ── Detect migrant-de-novo haplotypes ────────────────────────────────────
+    # A non-migrant haplotype is migrant-de-novo if:
+    #
+    # migrant profile:       A_C
+    # derived profile:       A_B_C_D
+    #
+    # i.e. migrant mutations are a subset of the non-migrant mutations.
+    
+    migrant_profiles <- hap_data %>%
+      filter(
+        type == "migrant",
+        !is.na(profile_str),
+        profile_str != "NA"
+      ) %>%
+      select(
+        migrant_population_id = population_id,
+        migrant_profile = profile_str,
+        migrant_source_population_id = source_population_id,
+        migrant_source_haplotype_id  = source_haplotype_id
+      ) %>%
+      distinct()
+    
+    
+    if (nrow(migrant_profiles) > 0) {
+      
+      non_migrant_idx <- which(
+        hap_data$type != "migrant" &
+          hap_data$type != "migrant-de-novo" &
+          !is.na(hap_data$profile_str) &
+          hap_data$profile_str != "NA"
+      )
+      
+      de_novo_count <- 0
+      
+      # Track haplotypes already analysed
+      analysed_mutants <- character(0)
+      
+      for (idx in non_migrant_idx) {
+        
+        # Unique identifier for this mutant
+        haplotype_id <- hap_data$haplotype_id[idx]
+        
+        # Skip if already analysed
+        if (haplotype_id %in% analysed_mutants) {
+          next
+        }
+        
+        # Mark as analysed
+        analysed_mutants <- c(
+          analysed_mutants,
+          haplotype_id
+        )
+        
+        derived_profile <- parse_sig(hap_data$profile_str[idx])
+        pop <- hap_data$population_id[idx]
+        
+        # Migrants available in this population
+        candidates <- migrant_profiles %>%
+          filter(migrant_population_id == pop)
+        
+        if (nrow(candidates) > 0) {
+          
+          contained <- sapply(
+            candidates$migrant_profile,
+            function(mprof) {
+              
+              migrant_mutations <- parse_sig(mprof)
+              
+              # Correct direction:
+              # migrant profile is contained within derived profile
+              all(migrant_mutations %in% derived_profile)
+            }
+          )
+          
+          if (any(contained)) {
+            
+            hit <- candidates[which(contained)[1], ]
+            
+            hap_data$type[idx] <- "migrant-de-novo"
+            
+            hap_data$source_population_id[idx] <-
+              hit$migrant_source_population_id
+            
+            hap_data$source_haplotype_id[idx] <-
+              hit$migrant_source_haplotype_id
+            
+            de_novo_count <- de_novo_count + 1
+          }
+        }
+      }
+      
+      if (de_novo_count > 0) {
+        message(sprintf(
+          "Identified %d migrant-de-novo haplotype(s).",
+          de_novo_count
+        ))
+      } else {
+        message("No migrant-de-novo haplotypes detected.")
+      }
+    }
   } else {
     message("No haplotype profiles shared across populations.")
   }
@@ -501,7 +602,7 @@ if (top_n > 0L) {
 # contiguously (avoids interleaved colour breaks in stacked area charts).
 # Population-prefixed labels (e.g. P0M3, P1M3) are unique, so distinct() is
 # sufficient — no deduplication needed.
-type_stack_order <- c("reference", "founder", "mutant", "recombinant", "migrant")
+type_stack_order <- c("reference", "founder", "mutant", "recombinant", "migrant", "migrant-de-novo")
 hap_id_levels <- hap_data %>%
   distinct(haplotype_id, type) %>%
   mutate(type = factor(type, levels = type_stack_order)) %>%
@@ -519,7 +620,8 @@ type_colour_values <- c(
   founder     = "#4DBBD5",
   mutant      = "#E64B35",
   recombinant = "#00A087",
-  migrant     = "#F39B7FFF"
+  migrant     = "#F39B7FFF",
+  "migrant-de-novo" = "#8491B4FF"
 )
 
 type_colour_scale <- scale_colour_manual(values = type_colour_values, name = "Haplotype")
@@ -607,7 +709,8 @@ type_pattern_values <- c(
   founder     = "none",
   mutant      = "stripe",
   recombinant = "crosshatch",
-  migrant     = "circle"
+  migrant     = "circle",
+  "migrant-de-novo" = "wave"
 )
 
 p_sel <- ggplot(
@@ -640,7 +743,8 @@ p_sel <- ggplot(
       founder     = "grey30",
       mutant      = "grey30",
       recombinant = "grey30",
-      migrant     = "grey30"
+      migrant     = "grey30",
+      "migrant-de-novo" = "grey30"
     ),
     name = "Haplotype type"
   ) +
@@ -657,6 +761,7 @@ message(sprintf(
   sum(hap_summary$type == "founder"),
   sum(hap_summary$type == "mutant"),
   sum(hap_summary$type == "recombinant"),
-  sum(hap_summary$type == "migrant")
+  sum(hap_summary$type == "migrant"),
+  sum(hap_summary$type == "migrant-de-novo"),
 ))
 
