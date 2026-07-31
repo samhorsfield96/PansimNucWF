@@ -539,12 +539,16 @@ if (length(unique(hap_data$population_id)) > 1) {
             
             hit <- candidates[which(contained)[1], ]
             
-            hap_data$type[idx] <- "migrant-de-novo"
+            # Identify all rows belonging to this haplotype across generations
+            mask <- hap_data$population_id == pop &
+              hap_data$haplotype_id == haplotype_id
             
-            hap_data$source_population_id[idx] <-
+            hap_data$type[mask] <- "migrant-de-novo"
+            
+            hap_data$source_population_id[mask] <-
               hit$migrant_source_population_id
             
-            hap_data$source_haplotype_id[idx] <-
+            hap_data$source_haplotype_id[mask] <-
               hit$migrant_source_haplotype_id
             
             de_novo_count <- de_novo_count + 1
