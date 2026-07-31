@@ -23,7 +23,7 @@ plink_minimum_allele_count: 2
 synteny_alignments_n: 20
 
 # pegas parameters for recombination detection
-pegas_recombination_threshold: 0.9
+pegas_recombination_threshold: 1.0
 
 # set to true to enable simulation-specific analyses (plot_haplotypes, plot_te_copy_numbers, plot_sv, print_DFEs)
 simulated: false
