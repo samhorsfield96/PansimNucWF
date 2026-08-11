@@ -2,7 +2,7 @@
 authors = ["Samuel Horsfield <samuel.horsfield@unine.ch>"]
 channels = ["conda-forge", "bioconda"]
 name = "PansimNucWF"
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 version = "0.1.0"
 
 [activation]
