@@ -32,6 +32,9 @@ gff_dir <- args[[1L]]
 output_dir <- args[[2L]]
 args <- args[-c(1L, 2L)]
 
+gff_dir <- "/Users/samhorsfield/OneDrive/Work/Postdoc_Unine/Analysis/PansimNuc_results/poster_analysis/TE_vs_recomb/1e-6_mu_1e-3_dup_1e-3_del_1e-10_recomb_new"
+output_dir <- "/Users/samhorsfield/Software/PansimNucWF/gene_dist_testing"
+
 flag <- take_flag("--gene-type", args, "gene")
 gene_type <- flag$value
 args <- flag$args
@@ -77,15 +80,53 @@ extract_feature_distance <- function(genes, features, label) {
 }
 
 read_gff <- function(path) {
-  dt <- fread(path, sep = "\t", header = FALSE, comment.char = "#",
-              showProgress = FALSE)
+  if (grepl("\\.gz$", path, ignore.case = TRUE)) {
+    dt <- fread(cmd = paste("gzip -cd --", shQuote(path)), sep = "\t",
+                header = FALSE, comment.char = "#", showProgress = FALSE)
+  } else {
+    dt <- fread(path, sep = "\t", header = FALSE, comment.char = "#",
+                showProgress = FALSE)
+  }
   if (nrow(dt) == 0L) return(NULL)
   if (ncol(dt) < 5L) stop("GFF has fewer than five columns: ", path)
   setnames(dt, c("seqid", "source", "feature_type", "start", "end",
                  "score", "strand", "phase", "attributes")[seq_len(ncol(dt))])
   dt[, start := as.numeric(start)]
   dt[, end := as.numeric(end)]
+  dt[, attribute_feature_type := sub(
+    ".*(?:^|;)feature_type=([^;]+).*", "\\1", attributes, perl = TRUE
+  )]
+  dt[, attribute_feature_id := sub(
+    ".*(?:^|;)feature_id=([^;]+).*", "\\1", attributes, perl = TRUE
+  )]
+  dt[is.na(attributes) | !grepl("(?:^|;)feature_type=", attributes, perl = TRUE),
+     attribute_feature_type := NA_character_]
+  dt[is.na(attributes) | !grepl("(?:^|;)feature_id=", attributes, perl = TRUE),
+     attribute_feature_type := NA_character_]
   dt[is.finite(start) & is.finite(end) & start <= end]
+}
+
+build_genes <- function(features) {
+  # In PansimNuc annotations, exon/intron rows belonging to one gene share
+  # the same attributes:feature_type value. Collapse those rows into one span.
+  grouped_rows <- features[
+    feature_type %in% c("exon", "intron") & !is.na(attribute_feature_type)
+  ]
+  if (nrow(grouped_rows) > 0L) {
+    genes <- grouped_rows[
+      , .(
+        start = min(start),
+        end = max(end),
+        gene_feature_type = first(attribute_feature_id)
+      ),
+      by = .(seqid, gene_group = attribute_feature_id)
+    ]
+  } else {
+    genes <- features[feature_type == gene_type,
+                      .(seqid, start, end, gene_feature_id = feature_id)]
+  }
+  genes[, gene_row := .I]
+  genes
 }
 
 make_distance_plot <- function(data, distance_label, file_label, median_x, median_y) {
@@ -104,8 +145,8 @@ make_distance_plot <- function(data, distance_label, file_label, median_x, media
 
   ggplot(data, aes(x = log_downstream, y = log_upstream)) +
     geom_bin2d(bins = n_bins) +
-    geom_vline(xintercept = median_x, linetype = "dashed", colour = "white") +
-    geom_hline(yintercept = median_y, linetype = "dashed", colour = "white") +
+    geom_vline(xintercept = median_x, linetype = "dashed", colour = "black") +
+    geom_hline(yintercept = median_y, linetype = "dashed", colour = "black") +
     annotate("text", x = x_limits[1] + x_pad, y = y_limits[2] - y_pad,
          label = "Q1\nD < med; U > med", hjust = 0, vjust = 1,
          colour = "white", fontface = "bold") +
@@ -127,7 +168,7 @@ make_distance_plot <- function(data, distance_label, file_label, median_x, media
       x = "log10(downstream distance, bp)",
       y = "log10(upstream distance, bp)"
     ) +
-    theme_minimal(base_size = 11) +
+    theme_classic(base_size = 11) +
     theme(panel.grid = element_blank(), plot.title = element_text(face = "bold"))
 }
 
@@ -138,12 +179,12 @@ process_gff <- function(path) {
     return(NULL)
   }
 
-  genes <- features[feature_type == gene_type, .(seqid, start, end)]
+  genes <- build_genes(features)
   if (nrow(genes) == 0L) {
-    warning("Skipping GFF with no ", gene_type, " features: ", path)
+    warning("Skipping GFF with no grouped exon/intron or ", gene_type,
+            " features: ", path)
     return(NULL)
   }
-  genes[, gene_row := .I]
   gene_features <- genes[, .(seqid, start, end)]
   te_features <- features[feature_type %in% te_types, .(seqid, start, end)]
 
