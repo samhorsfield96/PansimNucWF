@@ -50,9 +50,8 @@ dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 gff_files <- list.files(
   gff_dir,
-  pattern = "\\.gff(\\.gz)?$",
-  full.names = TRUE,
-  ignore.case = TRUE
+  pattern="^pop_\\d+_gen_\\d+_genome_\\d+\\.gff",
+  full.names=TRUE
 )
 if (length(gff_files) == 0L) stop("No .gff or .gff.gz files found in ", gff_dir)
 
@@ -98,8 +97,8 @@ read_gff <- function(path) {
   )]
   dt[is.na(attributes) | !grepl("(?:^|;)feature_type=", attributes, perl = TRUE),
      attribute_feature_type := NA_character_]
-  dt[is.na(attributes) | !grepl("(?:^|;)feature_id=", attributes, perl = TRUE),
-     attribute_feature_type := NA_character_]
+     dt[is.na(attributes) | !grepl("(?:^|;)feature_id=", attributes, perl = TRUE),
+      attribute_feature_id := NA_character_]
   dt[is.finite(start) & is.finite(end) & start <= end]
 }
 
@@ -163,7 +162,7 @@ make_distance_plot <- function(data, distance_label, file_label, median_x, media
       title = paste(distance_label, "distance from each gene"),
       subtitle = sprintf("n = %d genes; dashed lines are median log10 distances", nrow(data)),
       x = "log10(downstream distance, bp)",
-      y = "log10(upstream distance, bp)",
+      y = "log10(upstream distance, bp)"
     ) +
     theme_classic(base_size = 11) +
     theme(panel.grid = element_blank(), plot.title = element_text(face = "bold"))
@@ -231,6 +230,45 @@ process_gff <- function(path) {
                  median(te_data$log_downstream), median(te_data$log_upstream)))
   dev.off()
   message("Wrote plots for ", basename(path))
+  genes[, genome_file := basename(path)]
+  genes
 }
 
-invisible(lapply(gff_files, process_gff))
+all_genes <- Filter(Negate(is.null), lapply(gff_files, process_gff))
+if (length(all_genes) > 0L) {
+  combined <- rbindlist(all_genes, use.names = TRUE, fill = TRUE)
+  fwrite(combined, file.path(output_dir, "all_genomes_gene_distances.csv"))
+
+  combined_plot_data <- rbind(
+    combined[, .(genome_file, gene_row, seqid, start, end,
+                 distance_type = "next gene",
+                 log_upstream = log_upstream_gene,
+                 log_downstream = log_downstream_gene)],
+    combined[, .(genome_file, gene_row, seqid, start, end,
+                 distance_type = "next TE",
+                 log_upstream = log_upstream_te,
+                 log_downstream = log_downstream_te)]
+  )
+  combined_plot_data <- combined_plot_data[
+    is.finite(log_upstream) & is.finite(log_downstream)
+  ]
+
+  if (nrow(combined_plot_data) > 0L) {
+    combined_gene_data <- combined_plot_data[distance_type == "next gene"]
+    combined_te_data <- combined_plot_data[distance_type == "next TE"]
+    pdf(file.path(output_dir, "all_genomes_gene_distance_quadrants.pdf"),
+        width = 13, height = 6.5, onefile = TRUE)
+    print(make_distance_plot(
+      combined_gene_data, "Next-gene", "all genomes",
+      median(combined_gene_data$log_downstream),
+      median(combined_gene_data$log_upstream)
+    ))
+    print(make_distance_plot(
+      combined_te_data, "Next-TE", "all genomes",
+      median(combined_te_data$log_downstream),
+      median(combined_te_data$log_upstream)
+    ))
+    dev.off()
+    message("Wrote combined plots for ", length(all_genes), " genome(s)")
+  }
+}
