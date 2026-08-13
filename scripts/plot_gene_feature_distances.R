@@ -32,9 +32,6 @@ gff_dir <- args[[1L]]
 output_dir <- args[[2L]]
 args <- args[-c(1L, 2L)]
 
-gff_dir <- "/Users/samhorsfield/OneDrive/Work/Postdoc_Unine/Analysis/PansimNuc_results/poster_analysis/TE_vs_recomb/1e-6_mu_1e-3_dup_1e-3_del_1e-10_recomb_new"
-output_dir <- "/Users/samhorsfield/Software/PansimNucWF/gene_dist_testing"
-
 flag <- take_flag("--gene-type", args, "gene")
 gene_type <- flag$value
 args <- flag$args
@@ -148,17 +145,17 @@ make_distance_plot <- function(data, distance_label, file_label, median_x, media
     geom_vline(xintercept = median_x, linetype = "dashed", colour = "black") +
     geom_hline(yintercept = median_y, linetype = "dashed", colour = "black") +
     annotate("text", x = x_limits[1] + x_pad, y = y_limits[2] - y_pad,
-         label = "Q1\nD < med; U > med", hjust = 0, vjust = 1,
-         colour = "white", fontface = "bold") +
+         label = "QSL", hjust = 0, vjust = 1,
+         colour = "black", fontface = "bold") +
     annotate("text", x = x_limits[2] - x_pad, y = y_limits[2] - y_pad,
-         label = "Q2\nD > med; U > med", hjust = 1, vjust = 1,
-         colour = "white", fontface = "bold") +
+         label = "QLL", hjust = 1, vjust = 1,
+         colour = "black", fontface = "bold") +
     annotate("text", x = x_limits[1] + x_pad, y = y_limits[1] + y_pad,
-         label = "Q4\nD < med; U < med", hjust = 0, vjust = 0,
-         colour = "white", fontface = "bold") +
+         label = "QSS", hjust = 0, vjust = 0,
+         colour = "black", fontface = "bold") +
     annotate("text", x = x_limits[2] - x_pad, y = y_limits[1] + y_pad,
-         label = "Q3\nD > med; U < med", hjust = 1, vjust = 0,
-         colour = "white", fontface = "bold") +
+         label = "QLS", hjust = 1, vjust = 0,
+         colour = "black", fontface = "bold") +
     scale_x_continuous(limits = x_limits) +
     scale_y_continuous(limits = y_limits) +
     scale_fill_viridis_c(name = "Genes", trans = "sqrt") +
