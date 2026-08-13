@@ -12,7 +12,8 @@ suppressPackageStartupMessages({
 #   --gene-type TYPE       GFF feature type used for genes (default: gene)
 #   --te-types TYPE,...     comma-separated TE feature types
 #                           (default: TE-CUT,TE-COPY)
-#   --bins N                number of heatmap bins per axis (default: 40)
+#   --bins N                number of heatmap bins per axis (default: 50)
+#   --final-generation      restrict analysis to the final generation
 
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -21,6 +22,17 @@ take_flag <- function(flag, args, default) {
   if (is.na(index)) return(list(value = default, args = args))
   if (index == length(args)) stop(flag, " requires a value.")
   list(value = args[[index + 1L]], args = args[-c(index, index + 1L)])
+}
+
+take_bool <- function(flag, args, default = FALSE) {
+  index <- match(flag, args)
+  if (is.na(index)) return(list(value = default, args = args))
+  next_arg <- if (index < length(args)) tolower(args[[index + 1L]]) else ""
+  if (next_arg %in% c("true", "false")) {
+    return(list(value = identical(next_arg, "true"),
+                args = args[-c(index, index + 1L)]))
+  }
+  list(value = TRUE, args = args[-index])
 }
 
 if (length(args) < 2L) {
@@ -38,8 +50,11 @@ args <- flag$args
 flag <- take_flag("--te-types", args, "TE-CUT,TE-COPY")
 te_types <- strsplit(flag$value, ",", fixed = TRUE)[[1L]]
 args <- flag$args
-flag <- take_flag("--bins", args, "40")
+flag <- take_flag("--bins", args, "50")
 n_bins <- as.integer(flag$value)
+args <- flag$args
+flag <- take_bool("--final-generation", args)
+final_generation_only <- flag$value
 args <- flag$args
 
 if (length(args) > 0L || !is.finite(n_bins) || n_bins < 2L) {
@@ -53,6 +68,15 @@ gff_files <- list.files(
   pattern="^pop_\\d+_gen_\\d+_genome_\\d+\\.gff",
   full.names=TRUE
 )
+
+if (final_generation_only) {
+  gens <- as.integer(sub(".*_gen_(\\d+)_genome_.*", "\\1",
+                         basename(gff_files)))
+  last_gen <- max(gens, na.rm=TRUE)
+  gff_files <- gff_files[gens == last_gen]
+  message("Restricting to generation ", last_gen)
+}
+
 if (length(gff_files) == 0L) stop("No .gff or .gff.gz files found in ", gff_dir)
 
 extract_feature_distance <- function(genes, features, label) {

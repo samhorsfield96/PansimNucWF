@@ -20,6 +20,7 @@ FINAL_GENERATION_ONLY = config.get("final_generation", False)
 IS_SIMULATED = config.get("simulated", False)
 PLOT_SV = config.get("plot_SVs", False)
 PLOT_TEs = config.get("plot_TEs", False)
+PLOT_GENE_DISTS = config.get("plot_gene_dists", False)
 DFE_CSV = f"{GENOME_DIR}/selection_samples.csv"
 HAS_DFE_CSV = IS_SIMULATED and Path(DFE_CSV).exists()
 
@@ -29,6 +30,7 @@ if IS_SIMULATED:
     PLOT_SV_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_sv.R")
     PLOT_DFE_SCRIPT = os.path.join(workflow.basedir, "scripts/print_DFEs.R")
     HAPLOTYPES_TOP_N = config.get("haplotypes_top_n", 5)
+    PLOT_GENE_DISTS_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_gene_feature_distances.R")
 
 
 def extract_generation(name):
@@ -178,7 +180,7 @@ rule call_variants_paftools:
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/variants/per_sample && "
-            "zcat {input.paf} | paftools.js call {params.preset} -s {wildcards.sample} -f {input.ref} - | "
+            "gzip -cd {input.paf} | paftools.js call {params.preset} -s {wildcards.sample} -f {input.ref} - | "
             "bgzip > {output.vcf} && "
             "tabix -p vcf {output.vcf}"
         )
@@ -339,6 +341,25 @@ if IS_SIMULATED:
                 (
                     f"mkdir -p {OUTPUT_DIR}/te_copy_numbers && "
                         "Rscript {params.script} {params.gff_dir} {params.out_prefix} {params.final_generation_flag}"
+                )
+
+    if PLOT_GENE_DISTS:
+
+        rule plot_gene_dists:
+            output:
+                plot=f"{OUTPUT_DIR}/gene_dists/all_genomes_gene_distance_quadrants.pdf",
+                csv=f"{OUTPUT_DIR}/gene_dists/all_genomes_gene_distances.csv"
+            params:
+                script=PLOT_GENE_DISTS_SCRIPT,
+                gff_dir=GENOME_DIR,
+                output_dir=f"{OUTPUT_DIR}/gene_dists",
+                final_generation_flag="--final-generation" if FINAL_GENERATION_ONLY else "",
+            conda:
+                "envs/simulated.yaml"
+            shell:
+                (
+                    f"mkdir -p {params.output_dir} && "
+                        "Rscript {params.script} {params.gff_dir} {params.output_dir} {params.final_generation_flag}"
                 )
 
     if PLOT_SV:

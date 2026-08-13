@@ -17,7 +17,7 @@ variant_calling_min_quality: 20
 # plink parameters for LD pruning. Set plink_ld_window to a large number to disable window-based pruning and only use plink_ld_window_kb.
 plink_ld_window: 99999
 plink_ld_window_kb: 1000
-plink_minimum_allele_count: 2
+plink_minimum_allele_count: 5
 
 # number of synteny alignments to retain per sample for synteny-based analyses. Does not include root.
 synteny_alignments_n: 20
@@ -26,12 +26,13 @@ synteny_alignments_n: 20
 pegas_recombination_threshold: 1.0
 
 # set to true to enable simulation-specific analyses (plot_haplotypes, plot_te_copy_numbers, plot_sv, print_DFEs)
-simulated: false
+simulated: true
 haplotypes_top_n: 5    # top N haplotypes to retain in haplotype plots (0 = keep all)
 
 # plotting of specific outputs
-plot_SVs: false
-plot_TEs: false
+plot_SVs: true
+plot_TEs: true
+plot_gene_dists: true
 
 # only run analysis of final generation if simulated
 final_generation: true
