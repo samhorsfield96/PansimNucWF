@@ -158,12 +158,12 @@ make_distance_plot <- function(data, distance_label, file_label, median_x, media
          colour = "black", fontface = "bold") +
     scale_x_continuous(limits = x_limits) +
     scale_y_continuous(limits = y_limits) +
-    scale_fill_viridis_c(name = "Genes", trans = "sqrt") +
+    scale_fill_viridis_c(name = "Genes (N)", trans = "sqrt") +
     labs(
       title = paste(distance_label, "distance from each gene"),
       subtitle = sprintf("n = %d genes; dashed lines are median log10 distances", nrow(data)),
       x = "log10(downstream distance, bp)",
-      y = "log10(upstream distance, bp)"
+      y = "log10(upstream distance, bp)",
     ) +
     theme_classic(base_size = 11) +
     theme(panel.grid = element_blank(), plot.title = element_text(face = "bold"))
