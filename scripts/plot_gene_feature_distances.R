@@ -259,7 +259,6 @@ process_gff <- function(path) {
   print(make_distance_plot(te_data, "Next-TE", base_name,
                  median(te_data$log_downstream), median(te_data$log_upstream)))
   dev.off()
-  message("Wrote plots for ", basename(path))
   genes[, genome_file := basename(path)]
   genes
 }
