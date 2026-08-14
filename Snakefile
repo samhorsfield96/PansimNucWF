@@ -31,6 +31,7 @@ if IS_SIMULATED:
     PLOT_DFE_SCRIPT = os.path.join(workflow.basedir, "scripts/print_DFEs.R")
     HAPLOTYPES_TOP_N = config.get("haplotypes_top_n", 5)
     PLOT_GENE_DISTS_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_gene_feature_distances.R")
+    PLOT_GENE_FREQ_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_gene_frequencies.R")
 
 
 def extract_generation(name):
@@ -105,11 +106,17 @@ rule all:
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_composition.pdf",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_per_haplotype_composition.pdf",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_sel_coeff_composition.pdf",
+            f"{OUTPUT_DIR}/gene_freq/gene_frequencies_frequency_dist.pdf",
+            f"{OUTPUT_DIR}/gene_freq/gene_frequencies_distribution.csv",
+            f"{OUTPUT_DIR}/gene_freq/gene_frequencies_per_gene.csv"
         ] if IS_SIMULATED else [
             f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
             f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
         ]),
         *([f"{OUTPUT_DIR}/sv/sv_plot.pdf"] if IS_SIMULATED and PLOT_SV else []),
+        *([f"{OUTPUT_DIR}/gene_dists/all_genomes_gene_distance_quadrants.pdf",
+           f"{OUTPUT_DIR}/gene_dists/all_genomes_gene_distances.csv",
+           ] if IS_SIMULATED and PLOT_GENE_DISTS else []),
         *([ # simulation-specific outputs, only when simulated: true and plot_TEs: true
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_per_genome.csv",
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_distribution.csv",
@@ -321,6 +328,24 @@ if IS_SIMULATED:
                 f"mkdir -p {OUTPUT_DIR}/haplotypes && "
                 "Rscript {params.script} {input.vcf} {params.gff_dir} {params.out_prefix} "
                 "{params.top_n} {params.recombination_threshold}"
+            )
+
+    rule plot_gene_freq:
+        output:
+            plot=f"{OUTPUT_DIR}/gene_freq/gene_frequencies_frequency_dist.pdf",
+            full_csv=f"{OUTPUT_DIR}/gene_freq/gene_frequencies_distribution.csv",
+            gene_csv=f"{OUTPUT_DIR}/gene_freq/gene_frequencies_per_gene.csv"
+        params:
+            script=PLOT_GENE_FREQ_SCRIPT,
+            gff_dir=GENOME_DIR,
+            output_dir=f"{OUTPUT_DIR}/gene_freq",
+            final_generation_flag="--final-generation" if FINAL_GENERATION_ONLY else "",
+        conda:
+            "envs/simulated.yaml"
+        shell:
+            (
+                f"mkdir -p {params.output_dir} && "
+                    "Rscript {params.script} {params.gff_dir} {params.output_dir} {params.final_generation_flag}"
             )
 
     if PLOT_TEs:
