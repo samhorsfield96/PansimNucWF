@@ -119,10 +119,16 @@ read_gff <- function(path) {
   dt[, attribute_feature_id := sub(
     ".*(?:^|;)feature_id=([^;]+).*", "\\1", attributes, perl = TRUE
   )]
+  dt[, attribute_feature_broken := sub(
+    ".*(?:^|;)feature_broken=([^;]+).*", "\\1", attributes, perl = TRUE
+  )]
   dt[is.na(attributes) | !grepl("(?:^|;)feature_type=", attributes, perl = TRUE),
      attribute_feature_type := NA_character_]
-     dt[is.na(attributes) | !grepl("(?:^|;)feature_id=", attributes, perl = TRUE),
+  dt[is.na(attributes) | !grepl("(?:^|;)feature_id=", attributes, perl = TRUE),
       attribute_feature_id := NA_character_]
+  dt[is.na(attributes) | !grepl("(?:^|;)feature_broken=", attributes, perl = TRUE),
+     attribute_feature_broken := NA_character_]
+  dt[, feature_broken := tolower(attribute_feature_broken) == "true"]
   dt[is.finite(start) & is.finite(end) & start <= end]
 }
 
@@ -296,3 +302,4 @@ if (length(all_genes) > 0L) {
     message("Wrote combined plots for ", length(all_genes), " genome(s)")
   }
 }
+
