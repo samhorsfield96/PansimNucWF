@@ -764,6 +764,6 @@ message(sprintf(
   sum(hap_summary$type == "mutant"),
   sum(hap_summary$type == "recombinant"),
   sum(hap_summary$type == "migrant"),
-  sum(hap_summary$type == "migrant-de-novo"),
+  sum(hap_summary$type == "migrant-de-novo")
 ))
 
