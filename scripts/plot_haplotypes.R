@@ -761,6 +761,8 @@ ggsave(paste0(outpref, "_sel_coeff_composition.pdf"), plot = p_sel, width = 8, h
 
 message(sprintf(
   "Done. %d haplotypes tracked (%d founder, %d mutant, %d recombinant, %d migrant, %d migrant-de-novo).",
+  nrow(hap_summary),
+  sum(hap_summary$type == "founder"),
   sum(hap_summary$type == "mutant"),
   sum(hap_summary$type == "recombinant"),
   sum(hap_summary$type == "migrant"),
