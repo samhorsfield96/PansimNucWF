@@ -195,7 +195,7 @@ p_minor_density <- ggplot(minor_sfs_data, aes(x = mut_freq)) +
   ) +
   labs(
     x     = "Mutant allele frequency",
-    y     = "Density"
+    y     = "Count"
   ) +
   scale_fill_npg() +
   theme_light(base_size = 11) +
@@ -225,7 +225,7 @@ p_both_density <- ggplot(sfs_data, aes(x = mut_freq)) +
   ) +
   labs(
     x     = "Mutant allele frequency",
-    y     = "Density"
+    y     = "Count"
   ) +
   scale_fill_npg() +
   theme_light(base_size = 11) +

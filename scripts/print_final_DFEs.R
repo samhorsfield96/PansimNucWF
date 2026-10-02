@@ -83,6 +83,7 @@ p.total <- ggplot(all_data, aes(x = selection_coefficient, after_stat(ncount))) 
   geom_histogram() +
   facet_grid(pop_id ~ .) +
   scale_fill_npg() +
+  scale_x_continuous(limits = c(0, NA)) +
   geom_vline(xintercept = 1.0, colour = "black", linetype="dotted") +
   labs(
     x = "Selection Coefficient", y = "Scaled Count", fill = "Feature Type") +
