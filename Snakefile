@@ -29,6 +29,7 @@ if IS_SIMULATED:
     PLOT_TE_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_te_copy_numbers.R")
     PLOT_SV_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_sv.R")
     PLOT_DFE_SCRIPT = os.path.join(workflow.basedir, "scripts/print_DFEs.R")
+    PLOT_FINAL_DFE_SCRIPT = os.path.join(workflow.basedir, "scripts/print_final_DFEs.R")
     HAPLOTYPES_TOP_N = config.get("haplotypes_top_n", 5)
     PLOT_GENE_DISTS_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_gene_feature_distances.R")
     PLOT_GENE_FREQ_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_gene_frequencies.R")
@@ -124,7 +125,7 @@ rule all:
             f"{OUTPUT_DIR}/te_copy_numbers/te_copy_numbers_total_load.csv",
         ] if PLOT_TEs and IS_SIMULATED else []),
         *([f"{OUTPUT_DIR}/synteny/synteny_plot.pdf"] if not IS_SIMULATED and PLOT_SV else []),
-        *([f"{OUTPUT_DIR}/dfe/dfe_plot.pdf"] if HAS_DFE_CSV else []),
+        *([f"{OUTPUT_DIR}/dfe/dfe_plot.pdf", f"{OUTPUT_DIR}/dfe/final_DFE_plot_split.pdf", f"{OUTPUT_DIR}/dfe/final_DFE_plot_total.pdf",] if HAS_DFE_CSV else []),
         
 
 
@@ -258,15 +259,29 @@ rule plink_ld_decay:
         ld_window=config.get("plink_ld_window", 99999),
         ld_window_kb=config.get("plink_ld_window_kb", 1000),
         mac=config.get("plink_minimum_allele_count", 2),
+        out_dir=f"{OUTPUT_DIR}/plink",
     conda:
         "envs/plink.yaml"
     shell:
-        (
-            f"mkdir -p {OUTPUT_DIR}/plink && "
-            "plink --threads {threads} --vcf {input.vcf} --double-id --allow-extra-chr --memory 8000 "
-            "--mac {params.mac} --r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} "
-            "--ld-window-r2 0 --out {params.out_prefix}"
-        )
+        # LD is computed per population (pop_<N>_gen_...); other sample names go to population 0.
+        # Per-population results are merged into one .ld file with an extra POP column.
+        """
+        mkdir -p {params.out_dir}
+        bcftools query -l {input.vcf} | while read s; do
+            p=$(echo "$s" | sed -nE 's/^pop_([0-9]+)_gen_.*/\\1/p')
+            echo "${{p:-0}} $s"
+        done > {params.out_prefix}_sample_pops.txt
+        rm -f {output}
+        for pop in $(cut -d' ' -f1 {params.out_prefix}_sample_pops.txt | sort -un); do
+            awk -v p=$pop '$1==p {{print $2, $2}}' {params.out_prefix}_sample_pops.txt > {params.out_prefix}_pop_$pop.keep
+            plink --threads {threads} --vcf {input.vcf} --double-id --allow-extra-chr --memory 8000 \\
+                --keep {params.out_prefix}_pop_$pop.keep \\
+                --mac {params.mac} --r2 --ld-window {params.ld_window} --ld-window-kb {params.ld_window_kb} \\
+                --ld-window-r2 0 --out {params.out_prefix}_pop_$pop
+            awk -v p=$pop -v h=$([ -s {output} ] && echo 0 || echo 1) 'NR==1 {{if (h) print $0, "POP"; next}} {{print $0, p}}' \\
+                {params.out_prefix}_pop_$pop.ld >> {output}
+        done
+        """
 
 
 rule plink_ld_plots:
@@ -444,15 +459,21 @@ if HAS_DFE_CSV:
 
     rule plot_dfe:
         output:
-            pdf=f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
+            pdf1=f"{OUTPUT_DIR}/dfe/dfe_plot.pdf",
+            pdf2=f"{OUTPUT_DIR}/dfe/final_DFE_plot_split.pdf",
+            pdf3=f"{OUTPUT_DIR}/dfe/final_DFE_plot_total.pdf"
         params:
-            script=PLOT_DFE_SCRIPT,
+            script1=PLOT_DFE_SCRIPT,
+            script2=PLOT_FINAL_DFE_SCRIPT,
             dfe_csv=DFE_CSV,
-            out_prefix=f"{OUTPUT_DIR}/dfe/dfe_plot",
+            input_dir=GENOME_DIR,
+            out_prefix1=f"{OUTPUT_DIR}/dfe/dfe_plot",
+            out_prefix2=f"{OUTPUT_DIR}/dfe/final_DFE_plot",
         conda:
             "envs/simulated.yaml"
         shell:
             (
                 f"mkdir -p {OUTPUT_DIR}/dfe && "
-                "Rscript {params.script} {params.dfe_csv} {params.out_prefix}"
+                "Rscript {params.script1} {params.dfe_csv} {params.out_prefix1} && "
+                "Rscript {params.script2} {params.input_dir} {params.out_prefix2}"
             )

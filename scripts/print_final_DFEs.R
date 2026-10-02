@@ -76,7 +76,7 @@ p.split <- ggplot(all_data, aes(x = selection_coefficient, after_stat(ncount), f
     x = "Selection Coefficient", y = "Scaled Count", fill = "Feature Type") +
   theme_light()
 
-ggsave(file.path(paste0(outpref, "_", "split.png")),
+ggsave(file.path(paste0(outpref, "_", "split.pdf")),
        p.split, width = 10, height = 6)
 
 p.total <- ggplot(all_data, aes(x = selection_coefficient, after_stat(ncount))) +
@@ -88,5 +88,5 @@ p.total <- ggplot(all_data, aes(x = selection_coefficient, after_stat(ncount))) 
     x = "Selection Coefficient", y = "Scaled Count", fill = "Feature Type") +
   theme_light()
 
-ggsave(file.path(paste0(outpref, "_", "total.png")),
+ggsave(file.path(paste0(outpref, "_", "total.pdf")),
        p.total, width = 5, height = 6)
