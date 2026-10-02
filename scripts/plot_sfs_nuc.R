@@ -84,7 +84,7 @@ sfs_list <- lapply(seq_len(nrow(groups)), function(i) {
     sample_meta$pop_id == pop & sample_meta$gen_id == gen]
   gt_sub <- gt_mat[, group_samples, drop = FALSE]
 
-  # For each variant site, split GT strings into alleles and compute frequencies
+  # Frequency of each non-reference allele per site (allele "0" is reference)
   site_df <- bind_rows(lapply(seq_len(nrow(gt_sub)), function(j) {
     gt_vec  <- gt_sub[j, , drop = TRUE]
     alleles <- unlist(strsplit(
@@ -92,25 +92,23 @@ sfs_list <- lapply(seq_len(nrow(groups)), function(i) {
       "[/|]"
     ))
     alleles <- alleles[alleles != "."]
-    if (length(alleles) < 2L)
-      return(data.frame(major_freq = NA_real_, minor_freq = NA_real_))
-    freq <- sort(as.numeric(table(alleles)) / length(alleles), decreasing = TRUE)
+    if (length(alleles) < 1L) return(NULL)
+    mut_counts <- table(alleles[alleles != "0"])
+    if (length(mut_counts) == 0L) return(NULL)
     data.frame(
-      major_freq = freq[[1L]],
-      minor_freq = if (length(freq) > 1L) freq[[2L]] else 0.0
+      chrom    = variants$chrom[j],
+      pos      = variants$pos[j],
+      mut_freq = as.numeric(mut_counts) / length(alleles),
+      stringsAsFactors = FALSE
     )
   }))
 
-  cbind(
-    data.frame(pop_id = pop, gen_id = gen,
-               chrom  = variants$chrom, pos = variants$pos,
-               stringsAsFactors = FALSE),
-    site_df
-  )
+  if (nrow(site_df) == 0L) return(NULL)
+  cbind(data.frame(pop_id = pop, gen_id = gen), site_df)
 })
 
 all_sites <- bind_rows(sfs_list) |>
-  filter(!is.na(major_freq), minor_freq > 0)
+  filter(mut_freq > 0)
 
 if (nrow(all_sites) == 0L) stop("No variable sites found in VCF.")
 
@@ -171,15 +169,13 @@ n_genomes_per_group <- sample_meta |>
 
 n_bins <- max(n_genomes_per_group$n)
 
-stacked_sfs_data <- melt(sfs_data, measure.vars = c("major_freq", "minor_freq"))
-stacked_sfs_data$variable <- as.character(stacked_sfs_data$variable)
-stacked_sfs_data$variable[stacked_sfs_data$variable == "major_freq"] <- "Major allele"
-stacked_sfs_data$variable[stacked_sfs_data$variable == "minor_freq"] <- "Minor allele"
+# Minor plot: mutant alleles at <= 50%; all plot: every mutant allele frequency
+minor_sfs_data <- filter(sfs_data, mut_freq <= 0.5)
 
-p_minor_density <- ggplot(sfs_data, aes(x = minor_freq)) +
+p_minor_density <- ggplot(minor_sfs_data, aes(x = mut_freq)) +
   geom_histogram(
     bins     = n_bins,
-    aes(y = ..density..),
+    aes(y = ..count..),
     boundary = 0,
     colour   = NA,
     position = "identity",
@@ -190,8 +186,7 @@ p_minor_density <- ggplot(sfs_data, aes(x = minor_freq)) +
                              sep = " / gen=", lex.order = TRUE)),
     labeller = labeller(
       .rows = function(x) paste0("pop=", sub(" / gen=", "  gen=", x))
-    ),
-    scales = "free_y"
+    )
   ) +
   scale_x_continuous(
     limits = c(0, 0.5),
@@ -199,7 +194,7 @@ p_minor_density <- ggplot(sfs_data, aes(x = minor_freq)) +
     labels = scales::percent_format(accuracy = 1)
   ) +
   labs(
-    x     = "Minor allele frequency",
+    x     = "Mutant allele frequency",
     y     = "Density"
   ) +
   scale_fill_npg() +
@@ -207,10 +202,10 @@ p_minor_density <- ggplot(sfs_data, aes(x = minor_freq)) +
   theme(legend.position = "none",
         strip.text      = element_text(size = 9))
 
-p_both_density <- ggplot(stacked_sfs_data, aes(x = value, fill = variable)) +
+p_both_density <- ggplot(sfs_data, aes(x = mut_freq)) +
   geom_histogram(
     bins     = n_bins,
-    aes(y = ..density..),
+    aes(y = ..count..),
     boundary = 0,
     colour   = NA,
     position = "identity",
@@ -222,7 +217,6 @@ p_both_density <- ggplot(stacked_sfs_data, aes(x = value, fill = variable)) +
     labeller = labeller(
       .rows = function(x) paste0("pop=", sub(" / gen=", "  gen=", x))
     ),
-    scales = "free_y"
   ) +
   scale_x_continuous(
     limits = c(0, 1.0),
@@ -230,9 +224,8 @@ p_both_density <- ggplot(stacked_sfs_data, aes(x = value, fill = variable)) +
     labels = scales::percent_format(accuracy = 1)
   ) +
   labs(
-    x     = "Allele frequency",
-    y     = "Density",
-    fill  = "Allele type"
+    x     = "Mutant allele frequency",
+    y     = "Density"
   ) +
   scale_fill_npg() +
   theme_light(base_size = 11) +
