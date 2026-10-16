@@ -64,12 +64,17 @@ sample_meta$genome_id <- suppressWarnings(
 
 bad <- is.na(sample_meta$pop_id) | is.na(sample_meta$gen_id)
 if (any(bad)) {
-  warning("Excluding ", sum(bad), " sample(s) whose names do not match ",
+  warning("WARNING: ", sum(bad), " sample(s) whose names do not match ",
           "pop_<N>_gen_<N>_genome_<N>: ",
           paste(sample_meta$sample_name[bad], collapse = ", "))
-  sample_meta <- sample_meta[!bad, ]
+  #sample_meta <- sample_meta[!bad, ]
+
+  # assign values to missing samples
+  sample_meta$pop_id[bad]    <- -1
+  sample_meta$gen_id[bad]    <- -1
+  sample_meta$genome_id[bad] <- seq_len(sum(bad))
 }
-if (nrow(sample_meta) == 0L) stop("No valid samples after name parsing.")
+#if (nrow(sample_meta) == 0L) stop("No valid samples after name parsing.")
 
 # ── Compute per-site allele frequencies ──────────────────────────────────────
 message("Computing per-site allele frequencies...")

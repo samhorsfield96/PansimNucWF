@@ -296,7 +296,7 @@ rule plink_ld_plots:
         script=PLINK_PLOT_SCRIPT,
         out_dir=f"{OUTPUT_DIR}/plink",
     conda:
-        "envs/plink.yaml"
+        "envs/simulated.yaml"
     shell:
         "Rscript {params.script} {input.ld} {params.out_dir} {input.fai}"
 
