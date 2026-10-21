@@ -3,7 +3,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 full_args <- commandArgs(trailingOnly = FALSE)
 script_arg <- full_args[grep("^--file=", full_args)][1]
-script_name <- ifelse(is.na(script_arg), "this_script.R", basename(sub("^--file=", "", script_arg)))
+script_name <- ifelse(is.na(script_arg), "pegas_haplotupe_analysis", basename(sub("^--file=", "", script_arg)))
 
 if (length(args) < 3L) {
   stop(sprintf("Usage: Rscript %s <input.vcf.gz> <output.tsv> <output.pdf> [recombination_threshold]", script_name))
@@ -12,7 +12,7 @@ if (length(args) < 3L) {
 input_vcf               <- args[[1L]]
 output_tsv              <- args[[2L]]
 output_pdf              <- args[[3L]]
-recombination_threshold <- if (length(args) >= 4L) as.numeric(args[[4L]]) else 0.9
+recombination_threshold <- if (length(args) >= 5L) as.numeric(args[[5L]]) else 0.9
 
 suppressPackageStartupMessages({
   library(vcfR)
@@ -184,66 +184,68 @@ summary_df$parents <- vapply(seq_len(n_haps), function(i) {
 }, character(1L))
 write.table(summary_df, output_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
 
-# ── Plots (single PDF, one page per figure) ───────────────────────────────────
+if (output_pdf != "NA") {
+  # ── Plots (single PDF, one page per figure) ───────────────────────────────────
 
-node_bg                  <- rep("white", n_haps)
-node_bg[recomb_node_set] <- "tomato"
+  node_bg                  <- rep("white", n_haps)
+  node_bg[recomb_node_set] <- "tomato"
 
-# Quadratic bezier arc — draws a curved dashed line between two points
-draw_arc <- function(x0, y0, x1, y1, col = "red2", lwd = 1.5, lty = 2,
-                     n = 60L, curve = 0.25) {
-  dx <- x1 - x0; dy <- y1 - y0
-  mx <- (x0 + x1) / 2 - dy * curve
-  my <- (y0 + y1) / 2 + dx * curve
-  t  <- seq(0, 1, length.out = n)
-  lines((1-t)^2*x0 + 2*(1-t)*t*mx + t^2*x1,
-        (1-t)^2*y0 + 2*(1-t)*t*my + t^2*y1,
-        col = col, lwd = lwd, lty = lty)
-}
-
-pdf(output_pdf, width = 8, height = 7)
-
-# Page 1: Haplotype network — coloured nodes + dashed arcs for recombination
-# plot.haploNet returns node coordinates invisibly (rows 1:n_haps = real haplotypes)
-if (n_haps <= 1L) {
-  plot.new()
-  title(main = "Haplotype network")
-  text(0.5, 0.5,
-       sprintf("Only %d unique haplotype — network cannot be drawn.", n_haps),
-       cex = 1.2)
-  coords <- NULL
-} else {
-  coords <- plot(
-    net,
-    size          = sqrt(freq),
-    bg            = node_bg,
-    labels        = TRUE,
-    show.mutation = 1,
-    main          = paste0("Haplotype network  (recombinants = ", n_recombinants, ")")
-  )
-}
-if (n_recombinants > 0L && !is.null(coords)) {
-  coord_labels <- rownames(coords)
-  for (pair in recomb_arcs) {
-    r1 <- match(hap_labels[pair[1L]], coord_labels)
-    r2 <- match(hap_labels[pair[2L]], coord_labels)
-    if (is.na(r1) || is.na(r2)) next
-    draw_arc(coords[r1, 1L], coords[r1, 2L],
-             coords[r2, 1L], coords[r2, 2L])
+  # Quadratic bezier arc — draws a curved dashed line between two points
+  draw_arc <- function(x0, y0, x1, y1, col = "red2", lwd = 1.5, lty = 2,
+                      n = 60L, curve = 0.25) {
+    dx <- x1 - x0; dy <- y1 - y0
+    mx <- (x0 + x1) / 2 - dy * curve
+    my <- (y0 + y1) / 2 + dx * curve
+    t  <- seq(0, 1, length.out = n)
+    lines((1-t)^2*x0 + 2*(1-t)*t*mx + t^2*x1,
+          (1-t)^2*y0 + 2*(1-t)*t*my + t^2*y1,
+          col = col, lwd = lwd, lty = lty)
   }
-}
 
-# Page 2: Recombinant haplotype summary
-plot.new()
-title(main = paste0("Recombinant haplotypes  (threshold = ", recombination_threshold, ")"))
-if (n_recombinants == 0L) {
-  text(0.5, 0.5, "No recombinant haplotypes detected", cex = 1.2)
-} else {
-  lines_out <- vapply(recomb_node_set, function(i) {
-    parents <- recomb_parent_labels[[i]]
-    sprintf("%s  <-  %s + %s", hap_labels[i], parents[1L], parents[2L])
-  }, character(1L))
-  text(0.5, seq(0.9, 0.1, length.out = length(lines_out)),
-       lines_out, cex = 1.0)
+  pdf(output_pdf, width = 8, height = 7)
+
+  # Page 1: Haplotype network — coloured nodes + dashed arcs for recombination
+  # plot.haploNet returns node coordinates invisibly (rows 1:n_haps = real haplotypes)
+  if (n_haps <= 1L) {
+    plot.new()
+    title(main = "Haplotype network")
+    text(0.5, 0.5,
+        sprintf("Only %d unique haplotype — network cannot be drawn.", n_haps),
+        cex = 1.2)
+    coords <- NULL
+  } else {
+    coords <- plot(
+      net,
+      size          = sqrt(freq),
+      bg            = node_bg,
+      labels        = TRUE,
+      show.mutation = 1,
+      main          = paste0("Haplotype network  (recombinants = ", n_recombinants, ")")
+    )
+  }
+  if (n_recombinants > 0L && !is.null(coords)) {
+    coord_labels <- rownames(coords)
+    for (pair in recomb_arcs) {
+      r1 <- match(hap_labels[pair[1L]], coord_labels)
+      r2 <- match(hap_labels[pair[2L]], coord_labels)
+      if (is.na(r1) || is.na(r2)) next
+      draw_arc(coords[r1, 1L], coords[r1, 2L],
+              coords[r2, 1L], coords[r2, 2L])
+    }
+  }
+
+  # Page 2: Recombinant haplotype summary
+  plot.new()
+  title(main = paste0("Recombinant haplotypes  (threshold = ", recombination_threshold, ")"))
+  if (n_recombinants == 0L) {
+    text(0.5, 0.5, "No recombinant haplotypes detected", cex = 1.2)
+  } else {
+    lines_out <- vapply(recomb_node_set, function(i) {
+      parents <- recomb_parent_labels[[i]]
+      sprintf("%s  <-  %s + %s", hap_labels[i], parents[1L], parents[2L])
+    }, character(1L))
+    text(0.5, seq(0.9, 0.1, length.out = length(lines_out)),
+        lines_out, cex = 1.0)
+  }
+  invisible(dev.off())
 }
-invisible(dev.off())

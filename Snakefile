@@ -25,6 +25,11 @@ PLOT_HAPLOTYPES = config.get("plot_haplotypes", False)
 DFE_CSV = f"{GENOME_DIR}/selection_samples.csv"
 HAS_DFE_CSV = IS_SIMULATED and Path(DFE_CSV).exists()
 
+# whether to generate image of haplotype network
+HAPLOTYPE_PDF_PATH="NA"
+if PLOT_HAPLOTYPES:
+    HAPLOTYPE_PDF_PATH=f"{OUTPUT_DIR}/pegas/haplotype_network.pdf"
+
 if IS_SIMULATED:
     PLOT_HAPLOTYPES_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_haplotypes.R")
     PLOT_TE_SCRIPT = os.path.join(workflow.basedir, "scripts/plot_te_copy_numbers.R")
@@ -102,12 +107,13 @@ rule all:
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_minor_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_density_all_alleles.pdf",
         f"{OUTPUT_DIR}/sfs/sfs_nuc_sfs.csv",
-        *([f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv", f"{OUTPUT_DIR}/pegas/haplotype_network.pdf"] if PLOT_HAPLOTYPES else []),
         *([  # simulation-specific outputs, only when simulated: true
             f"{OUTPUT_DIR}/gene_freq/gene_frequencies_frequency_dist.pdf",
             f"{OUTPUT_DIR}/gene_freq/gene_frequencies_distribution.csv",
             f"{OUTPUT_DIR}/gene_freq/gene_frequencies_per_gene.csv"
-        ] if IS_SIMULATED else []),
+        ] if IS_SIMULATED else [
+            f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv"
+        ]),
         *([f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_summary.csv",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_freq.pdf",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_composition.pdf",
@@ -421,20 +427,19 @@ if IS_SIMULATED:
                     "Rscript {params.script} {params.root_gff} {params.sim_dir} --out {output} --link-types exon,TE-COPY,TE-CUT --types exon,TE-COPY,TE-CUT --gap 500 --max-alignments {params.max_alignments} {params.final_generation_flag}"
                 )
 else:
-    if PLOT_HAPLOTYPES:
-        rule pegas_haplotype_analysis:
-            input:
-                vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz"
-            output:
-                tsv=f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
-                pdf=f"{OUTPUT_DIR}/pegas/haplotype_network.pdf",
-            params:
-                script=PEGAS_SCRIPT,
-                recombination_threshold=RECOMBINATION_THRESHOLD
-            conda:
-                "envs/pegas.yaml"
-            shell:
-                f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{output.pdf}} {params.recombination_threshold}"
+    rule pegas_haplotype_analysis:
+        input:
+            vcf=f"{OUTPUT_DIR}/variants/filtered_variants_refgt.vcf.gz"
+        output:
+            tsv=f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv",
+        params:
+            script=PEGAS_SCRIPT,
+            recombination_threshold=RECOMBINATION_THRESHOLD,
+            pdf=HAPLOTYPE_PDF_PATH
+        conda:
+            "envs/pegas.yaml"
+        shell:
+            f"mkdir -p {OUTPUT_DIR}/pegas && Rscript {{params.script}} {{input.vcf}} {{output.tsv}} {{params.pdf}} {params.recombination_threshold}"
 
     if PLOT_SV:
         rule run_progressive_minimap2:
