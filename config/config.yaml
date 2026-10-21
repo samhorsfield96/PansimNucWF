@@ -32,7 +32,8 @@ haplotypes_top_n: 5    # top N haplotypes to retain in haplotype plots (0 = keep
 # plotting of specific outputs
 plot_SVs: true
 plot_TEs: true
-plot_gene_dists: true
+plot_gene_dists: false
+plot_haplotypes: false
 
 # only run analysis of final generation if simulated
-final_generation: true
+final_generation: false
