@@ -30,6 +30,9 @@ outpref  <- if (length(args) >= 3) args[3] else "haplotypes"
 top_n    <- if (length(args) >= 4) as.integer(args[4]) else 5L
 recombination_threshold <- if (length(args) >= 5) as.numeric(args[5]) else 0.9
 
+vcf_file <- "/Users/samhorsfield/Software/PansimNucWF/scripts/fixture.vcf"
+gff_dir <- "/Users/samhorsfield/Software/PansimNucWF/scripts/gff"
+
 # ── Parse sample names → population_id / generation / genome_id ──────────────
 
 parse_sample_name <- function(nm) {
@@ -176,8 +179,6 @@ find_recombinant_parents <- function(profile_c, all_profiles_named, threshold = 
   candidate_names <- Filter(
     function(nm) {
       a <- all_profiles_named[[nm]]
-      length(a) > 0 &&
-        (sum(a %in% profile_c) / length(a)) >= threshold
     },
     names(all_profiles_named)
   )
@@ -461,8 +462,9 @@ if (length(unique(hap_data$population_id)) > 1) {
       message("No migration events detected (shared profiles appeared simultaneously).")
     }
 
+    ####NEW####
     # ── Detect migrant recombinants ─────────────────────────────────────────
-    # A migrant recombinant must be the exact union of a migrant haplotype and
+    # A migrant recombinant must contain at least recombination_threshold of union of a migrant haplotype and
     # a distinct haplotype present in the recipient population in the previous
     # observed generation. Each parent must contribute mutations absent from
     # the other.
@@ -505,14 +507,23 @@ if (length(unique(hap_data$population_id)) > 1) {
       for (migrant_i in seq_len(nrow(migrant_parents))) {
         migrant <- migrant_parents[migrant_i, ]
         migrant_mutations <- parse_sig(migrant$profile_str)
+        
+        # check if over recombination threshold
+        if (length(migrant_mutations) == 0L ||
+            sum(migrant_mutations %in% child_mutations) / length(migrant_mutations) < recombination_threshold) next
+          
         for (resident_i in seq_len(nrow(resident_parents))) {
           resident <- resident_parents[resident_i, ]
           resident_mutations <- parse_sig(resident$profile_str)
           parent_union <- union(migrant_mutations, resident_mutations)
+          
+          # check if over recombination threshold
+          if (length(resident_mutations) == 0L ||
+              sum(resident_mutations %in% child_mutations) / length(resident_mutations) < recombination_threshold) next
 
           if (!length(setdiff(migrant_mutations, resident_mutations)) ||
               !length(setdiff(resident_mutations, migrant_mutations)) ||
-              !setequal(parent_union, child_mutations)) {
+              sum(parent_union %in% child_mutations) / length(parent_union) < recombination_threshold) {
             next
           }
 
@@ -542,6 +553,7 @@ if (length(unique(hap_data$population_id)) > 1) {
     } else {
       message("No migrant-recombinant haplotypes detected.")
     }
+    ####NEW####
 
     # ── Detect migrant-de-novo haplotypes ────────────────────────────────────
     # A non-migrant haplotype is migrant-de-novo if:
