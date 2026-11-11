@@ -1,0 +1,7 @@
+base::library(dplyr)
+setwd("/Users/samhorsfield/Software/PansimNucWF/scripts")
+vcf <- file.path("fixture.vcf"); gff <- file.path("gff"); dir.create(gff)
+out <- file.path("haplotypes")
+samples <- c("pop_0_gen_0_genome_1", "pop_0_gen_1_genome_1", "pop_0_gen_2_genome_1", "pop_1_gen_0_genome_1", "pop_1_gen_1_genome_1", "pop_1_gen_1_genome_2", "pop_1_gen_2_genome_1", "pop_1_gen_3_genome_1")
+lines <- c("##fileformat=VCFv4.2", "##contig=<ID=1,length=100>", "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">", paste(c("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", samples), collapse="\t"), paste(c("1", "10", ".", "A", "G", ".", "PASS", ".", "GT", c("1/1", "1/1", "1/1", "0/0", "1/1", "0/0", "1/1", "1/1")), collapse="\t"), paste(c("1", "20", ".", "C", "T", ".", "PASS", ".", "GT", c("0/0", "0/0", "0/0", "1/1", "0/0", "1/1", "1/1", "1/1")), collapse="\t"), paste(c("1", "30", ".", "C", "T", ".", "PASS", ".", "GT", c("0/0", "0/0", "0/0", "0/0", "0/0", "0/0", "0/0", "1/1")), collapse="\t"))
+writeLines(lines, vcf)

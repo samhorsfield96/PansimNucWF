@@ -28,10 +28,7 @@ vcf_file <- if (length(args) >= 1) args[1] else stop("VCF file path required as 
 gff_dir <- if (length(args) >= 2) args[2] else "."
 outpref  <- if (length(args) >= 3) args[3] else "haplotypes"
 top_n    <- if (length(args) >= 4) as.integer(args[4]) else 5L
-recombination_threshold <- if (length(args) >= 5) as.numeric(args[5]) else 0.9
-
-vcf_file <- "/Users/samhorsfield/Software/PansimNucWF/scripts/fixture.vcf"
-gff_dir <- "/Users/samhorsfield/Software/PansimNucWF/scripts/gff"
+recombination_threshold <- if (length(args) >= 5) as.numeric(args[5]) else 1.0
 
 # ── Parse sample names → population_id / generation / genome_id ──────────────
 
