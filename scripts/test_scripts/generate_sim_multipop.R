@@ -1,5 +1,5 @@
 base::library(dplyr)
-setwd("/Users/samhorsfield/Software/PansimNucWF/scripts")
+setwd()
 vcf <- file.path("fixture.vcf"); gff <- file.path("gff"); dir.create(gff)
 out <- file.path("haplotypes")
 samples <- c("pop_0_gen_0_genome_1", "pop_0_gen_1_genome_1", "pop_0_gen_2_genome_1", "pop_1_gen_0_genome_1", "pop_1_gen_1_genome_1", "pop_1_gen_1_genome_2", "pop_1_gen_2_genome_1", "pop_1_gen_3_genome_1")
