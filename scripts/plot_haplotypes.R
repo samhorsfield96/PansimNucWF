@@ -461,6 +461,88 @@ if (length(unique(hap_data$population_id)) > 1) {
       message("No migration events detected (shared profiles appeared simultaneously).")
     }
 
+    # ── Detect migrant recombinants ─────────────────────────────────────────
+    # A migrant recombinant must be the exact union of a migrant haplotype and
+    # a distinct haplotype present in the recipient population in the previous
+    # observed generation. Each parent must contribute mutations absent from
+    # the other.
+    recombinant_children <- hap_data %>%
+      filter(
+        freq > 0,
+        !is.na(profile_str),
+        profile_str != "NA",
+        type != "migrant"
+      ) %>%
+      group_by(population_id, haplotype_id, profile_str) %>%
+      summarise(first_gen = min(generation), .groups = "drop")
+
+    migrant_recombinant_count <- 0L
+    for (i in seq_len(nrow(recombinant_children))) {
+      child <- recombinant_children[i, ]
+      previous_generations <- hap_data$generation[
+        hap_data$population_id == child$population_id &
+          hap_data$generation < child$first_gen
+      ]
+      if (length(previous_generations) == 0L) next
+
+      previous_gen <- max(previous_generations)
+      previous_haplotypes <- hap_data %>%
+        filter(
+          population_id == child$population_id,
+          generation == previous_gen,
+          freq > 0,
+          !is.na(profile_str),
+          profile_str != "NA"
+        )
+      migrant_parents <- previous_haplotypes %>%
+        filter(type == "migrant")
+      resident_parents <- previous_haplotypes %>%
+        filter(type != "migrant", profile_str != child$profile_str)
+      if (nrow(migrant_parents) == 0L || nrow(resident_parents) == 0L) next
+
+      child_mutations <- parse_sig(child$profile_str)
+      found_parents <- FALSE
+      for (migrant_i in seq_len(nrow(migrant_parents))) {
+        migrant <- migrant_parents[migrant_i, ]
+        migrant_mutations <- parse_sig(migrant$profile_str)
+        for (resident_i in seq_len(nrow(resident_parents))) {
+          resident <- resident_parents[resident_i, ]
+          resident_mutations <- parse_sig(resident$profile_str)
+          parent_union <- union(migrant_mutations, resident_mutations)
+
+          if (!length(setdiff(migrant_mutations, resident_mutations)) ||
+              !length(setdiff(resident_mutations, migrant_mutations)) ||
+              !setequal(parent_union, child_mutations)) {
+            next
+          }
+
+          child_mask <- hap_data$population_id == child$population_id &
+            hap_data$haplotype_id == child$haplotype_id
+          hap_data$type[child_mask] <- "migrant-recombinant"
+          hap_data$source_population_id[child_mask] <- migrant$source_population_id
+          hap_data$source_haplotype_id[child_mask] <- migrant$source_haplotype_id
+          if ("parents" %in% colnames(hap_data)) {
+            hap_data$parents[child_mask] <- paste(
+              resident$haplotype_id, migrant$haplotype_id, sep = ","
+            )
+          }
+          migrant_recombinant_count <- migrant_recombinant_count + 1L
+          found_parents <- TRUE
+          break
+        }
+        if (found_parents) break
+      }
+    }
+
+    if (migrant_recombinant_count > 0L) {
+      message(sprintf(
+        "Identified %d migrant-recombinant haplotype(s).",
+        migrant_recombinant_count
+      ))
+    } else {
+      message("No migrant-recombinant haplotypes detected.")
+    }
+
     # ── Detect migrant-de-novo haplotypes ────────────────────────────────────
     # A non-migrant haplotype is migrant-de-novo if:
     #
@@ -489,6 +571,7 @@ if (length(unique(hap_data$population_id)) > 1) {
       non_migrant_idx <- which(
         hap_data$type != "migrant" &
           hap_data$type != "migrant-de-novo" &
+          hap_data$type != "migrant-recombinant" &
           !is.na(hap_data$profile_str) &
           hap_data$profile_str != "NA"
       )
@@ -606,7 +689,7 @@ if (top_n > 0L) {
 # contiguously (avoids interleaved colour breaks in stacked area charts).
 # Population-prefixed labels (e.g. P0M3, P1M3) are unique, so distinct() is
 # sufficient — no deduplication needed.
-type_stack_order <- c("reference", "founder", "mutant", "recombinant", "migrant", "migrant-de-novo")
+type_stack_order <- c("reference", "founder", "mutant", "recombinant", "migrant", "migrant-recombinant", "migrant-de-novo")
 hap_id_levels <- hap_data %>%
   distinct(haplotype_id, type) %>%
   mutate(type = factor(type, levels = type_stack_order)) %>%
@@ -625,6 +708,7 @@ type_colour_values <- c(
   mutant      = "#E64B35",
   recombinant = "#00A087",
   migrant     = "#F39B7FFF",
+  "migrant-recombinant" = "#7E6148FF",
   "migrant-de-novo" = "#8491B4FF"
 )
 
@@ -714,6 +798,7 @@ type_pattern_values <- c(
   mutant      = "stripe",
   recombinant = "crosshatch",
   migrant     = "circle",
+  "migrant-recombinant" = "weave",
   "migrant-de-novo" = "wave"
 )
 
@@ -748,6 +833,7 @@ p_sel <- ggplot(
       mutant      = "grey30",
       recombinant = "grey30",
       migrant     = "grey30",
+      "migrant-recombinant" = "grey30",
       "migrant-de-novo" = "grey30"
     ),
     name = "Haplotype type"
@@ -760,12 +846,12 @@ p_sel <- add_facets(p_sel)
 ggsave(paste0(outpref, "_sel_coeff_composition.pdf"), plot = p_sel, width = 8, height = 6)
 
 message(sprintf(
-  "Done. %d haplotypes tracked (%d founder, %d mutant, %d recombinant, %d migrant, %d migrant-de-novo).",
+  "Done. %d haplotypes tracked (%d founder, %d mutant, %d recombinant, %d migrant, %d migrant-recombinant, %d migrant-de-novo).",
   nrow(hap_summary),
   sum(hap_summary$type == "founder"),
   sum(hap_summary$type == "mutant"),
   sum(hap_summary$type == "recombinant"),
   sum(hap_summary$type == "migrant"),
+  sum(hap_summary$type == "migrant-recombinant"),
   sum(hap_summary$type == "migrant-de-novo")
 ))
-
