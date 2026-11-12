@@ -389,8 +389,8 @@ if (!"source_haplotype_id"  %in% colnames(hap_data)) hap_data$source_haplotype_i
 
 # ── Detect cross-population haplotype migration ───────────────────────────────
 # A haplotype is classified as a migrant when the same mutation profile
-# (profile_str) is found in another population at a strictly later generation.
-# The source population is the one where the profile first appeared.
+# (profile_str) is found in another population at the same or a later generation.
+# When first appearances tie, the lowest population_id is treated as the source.
 if (length(unique(hap_data$population_id)) > 1) {
   message("Detecting cross-population haplotype migration...")
 
@@ -426,14 +426,14 @@ if (length(unique(hap_data$population_id)) > 1) {
       group_by(population_id) %>%
       summarise(founding_gen = min(generation), .groups = "drop")
 
-    # Migrants: same profile appeared strictly later in a different population,
-    # BUT only if it did not arrive in the founding generation of that population
+    # Migrants: same profile appeared in a different population at or after its
+    # source first appeared, BUT not in the recipient's founding generation
     # (individuals present at founding are classified as founders, not migrants).
     migrant_entries <- multi_pop_profiles %>%
       inner_join(source_origins, by = "profile_str") %>%
       inner_join(founding_gens, by = "population_id") %>%
       filter(population_id != source_population_id,
-             first_gen > source_first_gen,
+             first_gen >= source_first_gen,
              first_gen > founding_gen) %>%
       select(-founding_gen)
 
@@ -456,7 +456,7 @@ if (length(unique(hap_data$population_id)) > 1) {
         length(unique(migrant_entries$source_population_id))
       ))
     } else {
-      message("No migration events detected (shared profiles appeared simultaneously).")
+      message("No migration events detected (shared profiles appeared simultaneously or in the recipient's founding generation).")
     }
 
     # ── Detect migrant recombinants ─────────────────────────────────────────
