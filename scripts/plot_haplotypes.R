@@ -24,7 +24,7 @@ library(tools)
 
 args    <- commandArgs(trailingOnly = TRUE)
 args    <- args[!grepl("^--", args)]
-# vcf_file <- if (length(args) >= 1) args[1] else stop("VCF file path required as first argument")
+vcf_file <- if (length(args) >= 1) args[1] else stop("VCF file path required as first argument")
 gff_dir <- if (length(args) >= 2) args[2] else "."
 outpref  <- if (length(args) >= 3) args[3] else "haplotypes"
 top_n    <- if (length(args) >= 4) as.integer(args[4]) else 5L
