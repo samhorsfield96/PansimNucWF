@@ -63,5 +63,6 @@ Haplotype outputs depend on `simulated`:
 - With `simulated: true`: `results/haplotypes/haplotypes_haplotype_summary.csv`, `haplotypes_haplotype_freq.pdf`, `haplotypes_haplotype_composition.pdf`, `haplotypes_per_haplotype_composition.pdf`, and `haplotypes_sel_coeff_composition.pdf`; plus `results/gene_freq/gene_frequencies_frequency_dist.pdf`, `gene_frequencies_distribution.csv`, and `gene_frequencies_per_gene.csv`
 
 The simulated haplotype summary distinguishes migrant haplotypes from migrant recombinants, where a new haplotype is the combination of a migrant and an extant haplotype in the recipient population.
+Migration is inferred from observed profiles: when a profile first appears in multiple populations in the same generation, the lowest population ID is treated as its source.
 
 Additional outputs are included when their corresponding conditions are met: `results/sv/sv_plot.pdf` (`simulated: true`, `plot_SVs: true`); `results/synteny/synteny_plot.pdf` (`simulated: false`, `plot_SVs: true`); gene-distance plots and CSVs (`simulated: true`, `plot_gene_dists: true`); TE copy-number CSVs (`simulated: true`, `plot_TEs: true`); and DFE plots when `simulated: true` and `resources/genomes/selection_samples.csv` exists.
