@@ -460,10 +460,9 @@ if (length(unique(hap_data$population_id)) > 1) {
     }
 
     # ── Detect migrant recombinants ─────────────────────────────────────────
-    # A migrant recombinant must contain at least recombination_threshold of union of a migrant haplotype and
-    # a distinct haplotype present in the recipient population in the previous
-    # observed generation. Each parent must contribute mutations absent from
-    # the other.
+    # A migrant recombinant must combine a migrant and a resident haplotype
+    # co-present in the recipient population in the previous observed generation.
+    # Each parent must contribute mutations absent from the other.
     recombinant_children <- hap_data %>%
       filter(
         freq > 0,
@@ -495,7 +494,7 @@ if (length(unique(hap_data$population_id)) > 1) {
       migrant_parents <- previous_haplotypes %>%
         filter(type == "migrant")
       resident_parents <- previous_haplotypes %>%
-        filter(type != "migrant", profile_str != child$profile_str)
+        filter(!startsWith(type, "migrant"), profile_str != child$profile_str)
       if (nrow(migrant_parents) == 0L || nrow(resident_parents) == 0L) next
 
       child_mutations <- parse_sig(child$profile_str)
