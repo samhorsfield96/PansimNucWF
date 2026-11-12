@@ -24,7 +24,7 @@ library(tools)
 
 args    <- commandArgs(trailingOnly = TRUE)
 args    <- args[!grepl("^--", args)]
-vcf_file <- if (length(args) >= 1) args[1] else stop("VCF file path required as first argument")
+# vcf_file <- if (length(args) >= 1) args[1] else stop("VCF file path required as first argument")
 gff_dir <- if (length(args) >= 2) args[2] else "."
 outpref  <- if (length(args) >= 3) args[3] else "haplotypes"
 top_n    <- if (length(args) >= 4) as.integer(args[4]) else 5L
@@ -34,7 +34,7 @@ recombination_threshold <- if (length(args) >= 5) as.numeric(args[5]) else 1.0
 
 parse_sample_name <- function(nm) {
   m <- regmatches(nm, regexpr("^pop_(\\d+)_gen_(\\d+)_genome_(\\d+)$", nm, perl = TRUE))
-  if (length(m) == 0L) return(NULL)
+  if (length(m) == 0L) return(list(population_id = NA, generation = NA, genome_id = NA))
   parts <- as.integer(strsplit(sub("^pop_", "", m), "_gen_|_genome_")[[1L]])
   list(population_id = parts[1L], generation = parts[2L], genome_id = parts[3L])
 }
@@ -56,10 +56,6 @@ get_gff_data <- function(gff_dir) {
     # remove all extensions including compression
     base <- file_path_sans_ext(file_path_sans_ext(basename(gff_file)))
     parsed <- parse_sample_name(base)
-    if (is.null(parsed)) {
-      # skip files with unparseable names, but warn if any found
-      return(NULL)
-    }
     con = file(gff_file, "r")
     while(TRUE) {
       line = readLines(con, n = 1)
@@ -98,6 +94,9 @@ get_gff_data <- function(gff_dir) {
 
 # ── Read VCF and build per-genome mutation profiles ───────────────────────────
 
+# make a note of the reference log sel coefficient
+reference_log_sel_coeff <- 0.0
+
 genome_profiles_rds <- paste0(outpref, "_genome_profiles.rds")
 if (!file.exists(genome_profiles_rds)) {
   message("Reading VCF: ", vcf_file)
@@ -122,7 +121,7 @@ if (!file.exists(genome_profiles_rds)) {
   sample_names <- colnames(gt_mat)
 
   n_unparsed <- sum(vapply(sample_names,
-                           function(nm) is.null(parse_sample_name(nm)), logical(1L)))
+                           function(nm) is.na(parse_sample_name(nm)[1]), logical(1L)))
   if (n_unparsed > 0L) {
     message(n_unparsed, " sample name(s) could not be parsed as pop_N_gen_N_genome_N; ",
             "assigning population_id=0, generation=0.")
@@ -133,9 +132,24 @@ if (!file.exists(genome_profiles_rds)) {
     parsed  <- parse_sample_name(nm)
     toks    <- mut_tokens[has_alt[, i]]
     mut_sig <- if (length(toks) == 0L) NA_character_ else paste(sort(toks), collapse = ";")
-    if (is.null(parsed)) {
+    if (is.na(parsed[1])) {
+      #determine if reference, take this as the reference sel coefficient
+      if (is.na(mut_sig))
+      {
+        log_sel_coeff <- gff_data$log_sel_coeff[gff_data$sample_name == nm]
+        population_id = -1
+        generation = -1
+        reference_log_sel_coeff <<- if (length(log_sel_coeff) > 0) mean(log_sel_coeff) else 0.0
+      } else
+      {
+        log_sel_coeff = 0.0
+        population_id = 0L
+        generation = 0L
+      }
+      
+      # write output
       data.frame(sample = nm, population_id = 0L, generation = 0L,
-                 genome_id = i, mut_sig = mut_sig, log_sel_coeff = 0,
+                 genome_id = i, mut_sig = mut_sig, log_sel_coeff = if (length(log_sel_coeff) > 0) log_sel_coeff else 0.0,
                  stringsAsFactors = FALSE)
     } else {
       log_sel_coeff <- gff_data$log_sel_coeff[gff_data$sample_name == nm]
@@ -149,11 +163,15 @@ if (!file.exists(genome_profiles_rds)) {
   saveRDS(sample_meta, genome_profiles_rds)
 } else {
   sample_meta <- readRDS(genome_profiles_rds)
+  reference_log_sel_coeff <- sample_meta$log_sel_coeff[sample_meta$population_id == -1]
 }
 
 if (nrow(sample_meta) == 0L) stop("No samples found in VCF.")
 message(sprintf("Loaded profiles for %d sample(s) across %d generation(s).",
                 nrow(sample_meta), length(unique(sample_meta$generation))))
+
+# The reference genome's log selection coefficient is the fixed baseline.
+sample_meta$sel_coeff <- exp(sample_meta$log_sel_coeff - reference_log_sel_coeff)
 
 # ── Helper functions ──────────────────────────────────────────────────────────
 # checked, all good
@@ -252,7 +270,7 @@ build_global_hap_labels <- function(sample_meta, recombination_threshold) {
 }
 
 # Classify whole-genome haplotypes for one population.
-# pop_df must have mut_sig (from assign_element_sigs) and log_sel_coeff columns.
+# pop_df must have mut_sig and relative sel_coeff columns.
 # Returns: generation, haplotype_id, profile_str, sequence (concatenated), freq, type, sel_coeff
 # checked, all good
 classify_genome_haplotypes <- function(pop_df, population_id = 0L, global_labels) {
@@ -265,7 +283,7 @@ classify_genome_haplotypes <- function(pop_df, population_id = 0L, global_labels
         sigs <- mut_sig[!is.na(mut_sig)]
         if (length(sigs) == 0L) "NA" else paste(sigs, collapse = ";")
       },
-      sel_coeff   = sum(log_sel_coeff, na.rm = TRUE),
+      sel_coeff   = mean(sel_coeff, na.rm = TRUE),
       .groups     = "drop"
     )
   
@@ -357,7 +375,7 @@ classify_genome_haplotypes <- function(pop_df, population_id = 0L, global_labels
 # ── Classify whole-genome haplotypes ─────────────────────────────────────────
 message("Classifying whole-genome haplotypes per population...")
 
-hap_data_rds_file <- paste0(outpref, "_hap_data.rds")
+hap_data_rds_file <- paste0(outpref, "_hap_data_v2.rds")
 if (!file.exists(hap_data_rds_file)) { 
   global_labels <- build_global_hap_labels(sample_meta, recombination_threshold)
   hap_data <- sample_meta %>%
