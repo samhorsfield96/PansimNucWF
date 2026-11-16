@@ -255,7 +255,7 @@ p_SNP_density <- ggplot(snp_density, aes(cumpos, density)) +
   )
 
 if (mean_density - sd_density > 0) {
-  p_SNP_density <= p_SNP_density + geom_hline(yintercept = mean_density - sd_density,
+  p_SNP_density <- p_SNP_density + geom_hline(yintercept = mean_density - sd_density,
              colour = "red",
              linetype = "dashed")
 }
