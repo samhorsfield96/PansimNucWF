@@ -181,6 +181,8 @@ message(sprintf("Loaded profiles for %d sample(s) across %d generation(s).",
 sample_meta$sel_coeff <- exp(sample_meta$log_sel_coeff - reference_log_sel_coeff)
 
 # Edges describe shared observed alternate alleles, not confirmed parentage.
+# Mutant/recombinant types count incoming candidate predecessors. Migrant
+# ancestry propagates through descendants, even when all predecessors are migrants.
 build_allele_network <- function(sample_meta) {
   profiles <- vapply(sample_meta$mut_sig, function(sig) {
     if (is.na(sig) || !nzchar(sig)) return("")
@@ -192,7 +194,7 @@ build_allele_network <- function(sample_meta) {
     group_by(population_id, generation, profile) %>%
     summarise(
       count = n(),
-      #samples = paste(sort(sample), collapse = ","),
+      generations = paste(sort(generation), collapse = ","),
       genome_ids = paste(sort(genome_id), collapse = ","),
       .groups = "drop"
     ) %>%
@@ -237,13 +239,39 @@ build_allele_network <- function(sample_meta) {
                n_shared_alleles = integer(), stringsAsFactors = FALSE)
   }
   graph <- igraph::graph_from_data_frame(edges, directed = TRUE, vertices = nodes)
-  parent_counts <- igraph::degree(graph, mode = "in")
+
+  # Profile origins and edges are inferred from observations, not a pedigree.
+  origins <- nodes %>%
+    arrange(generation, population_id) %>%
+    group_by(profile) %>%
+    slice_head(n = 1L) %>%
+    ungroup()
+  origin_index <- match(nodes$profile, origins$profile)
+  source_populations <- origins$population_id[origin_index]
   first_generations <- ave(nodes$generation, nodes$population_id, FUN = min)
-  igraph::V(graph)$type <- ifelse(
-    parent_counts >= 2L, "recombinant",
-    ifelse(parent_counts == 1L, "mutant",
-           ifelse(nodes$generation == first_generations, "founder", "unresolved"))
-  )
+  types <- rep("unresolved", nrow(nodes))
+  migrant_lineage <- rep(FALSE, nrow(nodes))
+  for (i in order(nodes$generation, nodes$population_id, nodes$name)) {
+    parents <- as.integer(igraph::neighbors(graph, i, mode = "in"))
+    parent_lineages <- migrant_lineage[parents]
+    is_migrant <- nodes$population_id[i] != source_populations[i]
+    migrant_lineage[i] <- is_migrant || any(parent_lineages)
+
+    types[i] <- if (is_migrant) {
+      "migrant"
+    } else if (length(parents) >= 2L) {
+      if (any(parent_lineages) && any(!parent_lineages)) "migrant-recombinant" else "recombinant"
+    } else if (length(parents) == 1L) {
+      if (parent_lineages[1L]) "migrant-de-novo" else "mutant"
+    } else if (nodes$generation[i] == first_generations[i]) {
+      "founder"
+    } else {
+      "unresolved"
+    }
+  }
+  igraph::V(graph)$type <- types
+  igraph::V(graph)$origin_population_id <- source_populations
+  igraph::V(graph)$migrant_lineage <- migrant_lineage
   graph
 }
 
@@ -255,7 +283,9 @@ network_nodes$plot_row <- ave(seq_len(nrow(network_nodes)), network_nodes$genera
                               FUN = seq_along)
 network_layout <- cbind(network_nodes$generation, network_nodes$plot_row)
 type_colours <- c(founder = "grey70", mutant = "steelblue",
-                  recombinant = "tomato", unresolved = "orange") 
+                  recombinant = "tomato", unresolved = "orange",
+                  migrant = "purple", `migrant-de-novo` = "darkgreen",
+                  `migrant-recombinant` = "brown")
  
 plot(
   allele_network, layout = network_layout,
@@ -298,6 +328,8 @@ build_interactive_allele_network <- function(graph) {
   )
   widget$x$nodes$details <- paste0(
     nodes$label, "\nType: ", nodes$type, "\nGenomes: ", nodes$genome_ids,
+    "\nOrigin population: ", nodes$origin_population_id,
+    "\nMigrant lineage: ", nodes$migrant_lineage,
     "\nAlleles: ", ifelse(nzchar(nodes$profile), nodes$profile, "(none)")
   )
   widget$x$links$details <- if (nrow(edges) > 0L) {
