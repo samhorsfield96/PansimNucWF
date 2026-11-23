@@ -187,6 +187,7 @@ parse_sig <- function(s) if (nchar(s) == 0) character(0) else strsplit(s, ";")[[
 # is a recombinant (union of their mutation sets equals C's, each contributes
 # at least one exclusive mutation), or NULL otherwise.
 # checked, all good
+#TODO: Issue here, when there are multiple recombination events, can only detect one event, is this important?
 find_recombinant_parents <- function(profile_c, all_profiles_named, threshold = 0.9) {
   if (threshold <= 0 || length(all_profiles_named) < 2) return(NULL)
 
@@ -546,8 +547,8 @@ if (length(unique(hap_data$population_id)) > 1) {
           hap_data$source_population_id[child_mask] <- migrant$source_population_id
           hap_data$source_haplotype_id[child_mask] <- migrant$source_haplotype_id
           if ("parents" %in% colnames(hap_data)) {
-            hap_data$parents[child_mask] <- paste(
-              resident$haplotype_id, migrant$haplotype_id, sep = ","
+            hap_data$parents[child_mask] <- paste0(
+              resident$haplotype_id, "||", migrant$haplotype_id
             )
           }
           migrant_recombinant_count <- migrant_recombinant_count + 1L
@@ -585,6 +586,7 @@ if (length(unique(hap_data$population_id)) > 1) {
       ) %>%
       select(
         migrant_population_id = population_id,
+        migrant_haplotype_id = haplotype_id,
         migrant_profile = profile_str,
         migrant_type = type,
         migrant_source_population_id = source_population_id,
@@ -671,6 +673,8 @@ if (length(unique(hap_data$population_id)) > 1) {
               "migrant-de-novo"
             }
             
+            hap_data$parents[mask] <- hit$migrant_haplotype_id
+
             hap_data$source_population_id[mask] <-
               hit$migrant_source_population_id
             
@@ -718,6 +722,7 @@ hap_summary <- hap_data %>%
     mean_sel_coeff       = mean(sel_coeff, na.rm = TRUE),
     source_population_id = { v <- source_population_id[!is.na(source_population_id)]; if (length(v)) v[1L] else NA_integer_ },
     source_haplotype_id  = { v <- source_haplotype_id[!is.na(source_haplotype_id)];  if (length(v)) v[1L] else NA_character_ },
+    parents = { v <- parents[!is.na(parents)];  if (length(v)) v[1L] else NA_character_ },
     .groups              = "drop"
   ) %>%
   arrange(population_id, first_generation)
