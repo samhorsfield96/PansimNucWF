@@ -258,6 +258,7 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
     if (!nzchar(sig)) character(0L) else strsplit(sig, ";", fixed = TRUE)[[1L]]
   })
   
+  # build graph, identified where haplotypes in consecutive generations share single allele
   edge_list <- list()
   for (gen in unique(nodes$generation[pop_nodes])) {
     previous <- pop_nodes[nodes$generation[pop_nodes] == gen - 1L]
@@ -297,7 +298,6 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
   graph <- igraph::graph_from_data_frame(edges, directed = TRUE, vertices = nodes)
   
   # classification of types
-  # TODO also need to identify whether the previous generation was a migrant (migrant de novo) as well as recombinant (recombinant de novo)
   types <- rep("unresolved", nrow(nodes))
   for (i in seq_len(nrow(nodes))) {
     if (nodes$generation[i] != generation_num + 1L) next
@@ -326,13 +326,23 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
                           selfcontained = FALSE)
   
   network_haplotypes <- igraph::as_data_frame(graph, what = "vertices")
-  
-  sample_meta_current_gen <- merge(subset_sample_meta[subset_sample_meta$generation == generation_num + 1, ], network_haplotypes[, c("mut_sig", "generation", "type")], by=c("mut_sig", "generation"))
-  
-  sample_meta <<- merge(sample_meta, sample_meta_current_gen[, c("sample", "mut_sig", "generation", "type")], by=c("sample", "mut_sig", "generation"), all.x = TRUE)
+
+  sample_meta_current_gen <- subset_sample_meta[
+    subset_sample_meta$generation == generation_num + 1L, ]
+  node_types <- network_haplotypes[, c("population_id", "generation", "mut_sig", "type")]
+  sample_meta_current_gen$type <- NULL
+  sample_meta_current_gen <- merge(
+    sample_meta_current_gen, node_types,
+    by = c("population_id", "generation", "mut_sig"), all.x = TRUE, sort = FALSE
+  )
+
+  sample_rows <- match(sample_meta_current_gen$sample, sample_meta$sample)
+  if (!"type" %in% names(sample_meta)) sample_meta$type <- NA_character_
+  sample_meta$type[sample_rows] <- sample_meta_current_gen$type
 }
 
 sample_meta$mut_sig[is.na(sample_meta$mut_sig)] <- ""
+sample_meta$type <- NA
 
 allele_network <- build_allele_network(sample_meta)
 saveRDS(allele_network, paste0(outpref, "_allele_network.rds"))
