@@ -239,30 +239,32 @@ build_interactive_allele_network <- function(graph) {
 }
 
 # build allele network for two generations at a time, don't need to over complicate it. Can detect mutations and recombination in generation N based on generation N-1
+# TODO use source_populations to identify migrants, can then label recombinant and de novo mutations
 build_allele_network <- function(sample_meta, generation_num, population_num) {
   subset_sample_meta <- subset(sample_meta, (generation == generation_num | generation == generation_num + 1) & population_id == population_num) 
-  mut_sig <- vapply(subset_sample_meta$mut_sig, normalise_profile, character(1L))
-
+  
   nodes <- subset_sample_meta %>%
-    mutate(mut_sig = profiles) %>%
-    group_by(population_id, generation, mut_sig) %>%
+    mutate(mut_sig = mut_sig) %>%
+    group_by(population_id, generation, mut_sig, source_populations) %>%
     summarise(
       count = n(),
       genome_ids = paste(sort(genome_id), collapse = ","),
       .groups = "drop"
     ) %>%
-    arrange(population_id, generation, mut_sig) %>%
+    arrange(population_id, generation, mut_sig, source_populations) %>%
     mutate(name = paste0("node_", row_number())) %>%
     select(name, everything())
   mutations <- lapply(nodes$mut_sig, function(sig) {
     if (!nzchar(sig)) character(0L) else strsplit(sig, ";", fixed = TRUE)[[1L]]
   })
   
-  # build graph, identified where haplotypes in consecutive generations share single allele
+  # build graph, identified where haplotypes in consecutive generations share single allele based on current generation and one previous
   edge_list <- list()
-  for (gen in unique(nodes$generation[pop_nodes])) {
-    previous <- pop_nodes[nodes$generation[pop_nodes] == gen - 1L]
-    current <- pop_nodes[nodes$generation[pop_nodes] == gen]
+  {
+    gen <- generation_num + 1
+    
+    previous <- which(nodes$generation == gen - 1L)
+    current <- which(nodes$generation == gen)
     if (length(previous) == 0L) next
     
     previous_snps <- unlist(mutations[previous], use.names = FALSE)
@@ -287,6 +289,7 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
         )
       }
     }
+    
   }
   
   edges <- if (length(edge_list) > 0L) {
@@ -299,11 +302,14 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
   
   # classification of types
   types <- rep("unresolved", nrow(nodes))
+  parent_ids <- rep(NA, nrow(nodes))
+  migrant <- rep(FALSE, nrow(nodes))
   for (i in seq_len(nrow(nodes))) {
     if (nodes$generation[i] != generation_num + 1L) next
 
     current_haplotype <- mutations[[i]]
     parents <- as.integer(igraph::neighbors(graph, i, mode = "in"))
+    is_migrant <- nodes$population_id[i] != nodes$source_populations[i]
 
     if (length(current_haplotype) == 0L) {
       types[i] <- "reference"
@@ -315,22 +321,35 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
         other_alleles <- unlist(parent_alleles[-j], use.names = FALSE)
         any(!(parent_alleles[[j]] %in% other_alleles))
       }, logical(1L))
+      
+      parent_lineages <- FALSE
+      if (sum(unique_contributors) > 0) {
+        parent_ids[i] <- subset_sample_meta$sample[parents[unique_contributors]]
+        parent_lineages <- subset_sample_meta$migrant[parents[unique_contributors]]
+      }
+      migrant[i] <- is_migrant || any(parent_lineages)
+      
       types[i] <- if (sum(unique_contributors) >= 2L) "recombinant" else "mutant"
+      
+      # TODO need to separate recombinant from migrant recombinant, where migrant and non-migrant recombine?
     }
   }
   igraph::V(graph)$type <- types
+  igraph::V(graph)$parent_ids <- parent_ids
+  igraph::V(graph)$migrant <- migrant
   
-  
-  interactive_network <- build_interactive_allele_network(graph)
-  htmlwidgets::saveWidget(interactive_network, file = paste0(outpref, "_allele_network.html"),
-                          selfcontained = FALSE)
+  # interactive_network <- build_interactive_allele_network(graph)
+  # htmlwidgets::saveWidget(interactive_network, file = paste0(outpref, "_allele_network.html"),
+  #                         selfcontained = FALSE)
   
   network_haplotypes <- igraph::as_data_frame(graph, what = "vertices")
 
   sample_meta_current_gen <- subset_sample_meta[
     subset_sample_meta$generation == generation_num + 1L, ]
-  node_types <- network_haplotypes[, c("population_id", "generation", "mut_sig", "type")]
+  node_types <- network_haplotypes[, c("population_id", "generation", "mut_sig", "type", "parent_ids", "migrant")]
   sample_meta_current_gen$type <- NULL
+  sample_meta_current_gen$parent_ids <- NULL
+  sample_meta_current_gen$migrant <- NULL
   sample_meta_current_gen <- merge(
     sample_meta_current_gen, node_types,
     by = c("population_id", "generation", "mut_sig"), all.x = TRUE, sort = FALSE
@@ -338,11 +357,37 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
 
   sample_rows <- match(sample_meta_current_gen$sample, sample_meta$sample)
   if (!"type" %in% names(sample_meta)) sample_meta$type <- NA_character_
+  if (!"parent_ids" %in% names(sample_meta)) sample_meta$parent_ids <- NA_character_
+  if (!"migrant" %in% names(sample_meta)) sample_meta$migrant <- NA_character_
   sample_meta$type[sample_rows] <- sample_meta_current_gen$type
+  sample_meta$parent_ids[sample_rows] <- sample_meta_current_gen$parent_ids
+  sample_meta$migrant[sample_rows] <- sample_meta_current_gen$migrant
+  sample_meta
 }
 
+# ready sample metadata
 sample_meta$mut_sig[is.na(sample_meta$mut_sig)] <- ""
+sample_meta$mut_sig <- vapply(sample_meta$mut_sig, normalise_profile, character(1L))
 sample_meta$type <- NA
+sample_meta$migrant <- FALSE
+
+# determine migrant haplotypes
+# Profile origins and edges are inferred from observations, not a pedigree.
+origins <- sample_meta %>%
+  arrange(generation, population_id) %>%
+  group_by(mut_sig) %>%
+  slice_head(n = 1L) %>%
+  ungroup()
+origin_index <- match(sample_meta$mut_sig, origins$mut_sig)
+sample_meta$source_populations <- origins$population_id[origin_index]
+
+for (population_id in seq(0, max(unique(sample_meta$population_id) + 1))) {
+  for (generation in seq(1, max(unique(sample_meta$generation)))) {
+    sample_meta <- build_allele_network(sample_meta, generation_num = generation, population_num = population_id)
+  }
+}
+
+#TODO need to work out why parent lineages not working for recombinants and why second population not iterated over
 
 allele_network <- build_allele_network(sample_meta)
 saveRDS(allele_network, paste0(outpref, "_allele_network.rds"))

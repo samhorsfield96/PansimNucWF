@@ -163,7 +163,7 @@ if (!file.exists(genome_profiles_rds)) {
   saveRDS(sample_meta, genome_profiles_rds)
 } else {
   sample_meta <- readRDS(genome_profiles_rds)
-  reference_log_sel_coeff <- sample_meta$log_sel_coeff[sample_meta$population_id == -1]
+  reference_log_sel_coeff <- sample_meta$log_sel_coeff[sample_meta$generation == 0]
 }
 
 if (nrow(sample_meta) == 0L) stop("No samples found in VCF.")
