@@ -188,7 +188,148 @@ normalise_profile <- function(sig) {
   paste(sort(unique(strsplit(sig, ";", fixed = TRUE)[[1L]])), collapse = ";")
 }
 
-#TODO - issue here is that I am trying to reinvent the wheel. Perhaps there is some tool e.g. plink that can help with identifying haplotype networks, from this I can infer ancestry and recombination?
+build_interactive_allele_network <- function(graph) {
+  nodes <- igraph::as_data_frame(graph, what = "vertices")
+  edges <- igraph::as_data_frame(graph, what = "edges")
+  nodes$label <- paste0("P", nodes$population_id, " gen ", nodes$generation,
+                        " n=", nodes$count)
+  links <- data.frame(
+    source = match(edges$from, nodes$name) - 1L,
+    target = match(edges$to, nodes$name) - 1L,
+    shared_count = edges$n_shared_alleles
+  )
+  if (anyNA(links$source) || anyNA(links$target)) {
+    stop("Network edges refer to unknown nodes.")
+  }
+  
+  # networkD3 warns when node zero has no edges, even though indices are valid.
+  widget <- withCallingHandlers(
+    networkD3::forceNetwork(
+      Links = links, Nodes = nodes, Source = "source", Target = "target",
+      Value = "shared_count", NodeID = "label", Nodesize = "count", Group = "type",
+      linkColour = if (nrow(links) == 0L) character() else "#666666",
+      arrows = TRUE, zoom = TRUE, legend = TRUE, opacity = 0.8
+    ),
+    warning = function(w) {
+      if (identical(conditionMessage(w),
+                    "It looks like Source/Target is not zero-indexed. This is required in JavaScript and so your plot may not render.")) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+  widget$x$nodes$details <- paste0(
+    nodes$label, "\nType: ", nodes$type, "\nGenomes: ", nodes$genome_ids,
+    "\nOrigin population: ", nodes$origin_population_id,
+    "\nMigrant lineage: ", nodes$migrant_lineage,
+    "\nAlleles: ", ifelse(nzchar(nodes$profile), nodes$profile, "(none)")
+  )
+  widget$x$links$details <- if (nrow(edges) > 0L) {
+    paste0("Shared alleles: ", edges$shared_alleles)
+  } else {
+    character()
+  }
+  htmlwidgets::onRender(widget, "
+    function(el) {
+      d3.select(el).selectAll('.node').append('title')
+        .text(function(d) { return d.details; });
+      d3.select(el).selectAll('.link').append('title')
+        .text(function(d) { return d.details; });
+    }
+  ")
+}
+
+# build allele network for two generations at a time, don't need to over complicate it. Can detect mutations and recombination in generation N based on generation N-1
+build_allele_network <- function(sample_meta, generation_num, population_num) {
+  subset_sample_meta <- subset(sample_meta, (generation == generation_num | generation == generation_num + 1) & population_id == population_num) 
+  profiles <- vapply(subset_sample_meta$mut_sig, normalise_profile, character(1L))
+
+  nodes <- subset_sample_meta %>%
+    mutate(profile = profiles) %>%
+    group_by(population_id, generation, profile) %>%
+    summarise(
+      count = n(),
+      genome_ids = paste(sort(genome_id), collapse = ","),
+      .groups = "drop"
+    ) %>%
+    arrange(population_id, generation, profile) %>%
+    mutate(name = paste0("node_", row_number())) %>%
+    select(name, everything())
+  mutations <- lapply(nodes$profile, function(sig) {
+    if (!nzchar(sig)) character(0L) else strsplit(sig, ";", fixed = TRUE)[[1L]]
+  })
+  
+  edge_list <- list()
+  for (gen in unique(nodes$generation[pop_nodes])) {
+    previous <- pop_nodes[nodes$generation[pop_nodes] == gen - 1L]
+    current <- pop_nodes[nodes$generation[pop_nodes] == gen]
+    if (length(previous) == 0L) next
+    
+    previous_snps <- unlist(mutations[previous], use.names = FALSE)
+    previous_index <- split(rep(previous, lengths(mutations[previous])), previous_snps)
+    for (child in current) {
+      child_snps <- mutations[[child]]
+      candidate_indices <- unique(unlist(previous_index[mutations[[child]]], use.names = FALSE))
+      for (parent in candidate_indices) {
+        shared <- intersect(mutations[[parent]], mutations[[child]])
+        
+        # ensure strict gain of mutations, meaning child must be same length or more than parent
+        if (length(child_snps) < length(mutations[[parent]])) {
+          next
+        }
+        
+        edge_list[[length(edge_list) + 1L]] <- data.frame(
+          from = nodes$name[parent],
+          to = nodes$name[child],
+          shared_alleles = paste(shared, collapse = ";"),
+          n_shared_alleles = length(shared),
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  
+  edges <- if (length(edge_list) > 0L) {
+    bind_rows(edge_list)
+  } else {
+    data.frame(from = character(), to = character(), shared_alleles = character(),
+               n_shared_alleles = integer(), stringsAsFactors = FALSE)
+  }
+  graph <- igraph::graph_from_data_frame(edges, directed = TRUE, vertices = nodes)
+  
+  # classification of types
+  types <- rep("unresolved", nrow(nodes))
+  for (i in seq_len(nrow(nodes))) {
+    if (nodes$generation[i] != generation_num + 1L) next
+
+    current_haplotype <- mutations[[i]]
+    parents <- as.integer(igraph::neighbors(graph, i, mode = "in"))
+
+    if (length(current_haplotype) == 0L) {
+      types[i] <- "reference"
+    } else {
+      parent_alleles <- lapply(parents, function(parent) {
+        intersect(mutations[[parent]], current_haplotype)
+      })
+      unique_contributors <- vapply(seq_along(parent_alleles), function(j) {
+        other_alleles <- unlist(parent_alleles[-j], use.names = FALSE)
+        any(!(parent_alleles[[j]] %in% other_alleles))
+      }, logical(1L))
+      types[i] <- if (sum(unique_contributors) >= 2L) "recombinant" else "mutant"
+    }
+  }
+  igraph::V(graph)$type <- types
+  
+  
+  interactive_network <- build_interactive_allele_network(graph)
+  htmlwidgets::saveWidget(interactive_network, file = paste0(outpref, "_allele_network.html"),
+                          selfcontained = FALSE)
+  
+  
+}
+
+
+
+#TODO - issue here is that I am trying to reinvent the wheel. Perhaps there is some tool e.g. pegas that can help with identifying haplotype networks, from this I can infer ancestry and recombination?
 
 build_allele_network <- function(sample_meta) {
   profiles <- vapply(sample_meta$mut_sig, normalise_profile, character(1L))
@@ -503,56 +644,4 @@ plot(
   main = "Shared alternate alleles between consecutive generations"
 )
 
-build_interactive_allele_network <- function(graph) {
-  nodes <- igraph::as_data_frame(graph, what = "vertices")
-  edges <- igraph::as_data_frame(graph, what = "edges")
-  nodes$label <- paste0("P", nodes$population_id, " gen ", nodes$generation,
-                        " n=", nodes$count)
-  links <- data.frame(
-    source = match(edges$from, nodes$name) - 1L,
-    target = match(edges$to, nodes$name) - 1L,
-    shared_count = edges$n_shared_alleles
-  )
-  if (anyNA(links$source) || anyNA(links$target)) {
-    stop("Network edges refer to unknown nodes.")
-  }
 
-  # networkD3 warns when node zero has no edges, even though indices are valid.
-  widget <- withCallingHandlers(
-    networkD3::forceNetwork(
-      Links = links, Nodes = nodes, Source = "source", Target = "target",
-      Value = "shared_count", NodeID = "label", Nodesize = "count", Group = "type",
-      linkColour = if (nrow(links) == 0L) character() else "#666666",
-      arrows = TRUE, zoom = TRUE, legend = TRUE, opacity = 0.8
-    ),
-    warning = function(w) {
-      if (identical(conditionMessage(w),
-                    "It looks like Source/Target is not zero-indexed. This is required in JavaScript and so your plot may not render.")) {
-        invokeRestart("muffleWarning")
-      }
-    }
-  )
-  widget$x$nodes$details <- paste0(
-    nodes$label, "\nType: ", nodes$type, "\nGenomes: ", nodes$genome_ids,
-    "\nOrigin population: ", nodes$origin_population_id,
-    "\nMigrant lineage: ", nodes$migrant_lineage,
-    "\nAlleles: ", ifelse(nzchar(nodes$profile), nodes$profile, "(none)")
-  )
-  widget$x$links$details <- if (nrow(edges) > 0L) {
-    paste0("Shared alleles: ", edges$shared_alleles)
-  } else {
-    character()
-  }
-  htmlwidgets::onRender(widget, "
-    function(el) {
-      d3.select(el).selectAll('.node').append('title')
-        .text(function(d) { return d.details; });
-      d3.select(el).selectAll('.link').append('title')
-        .text(function(d) { return d.details; });
-    }
-  ")
-}
-
-interactive_network <- build_interactive_allele_network(allele_network)
-htmlwidgets::saveWidget(interactive_network, file = paste0(outpref, "_allele_network.html"),
-                        selfcontained = FALSE)
