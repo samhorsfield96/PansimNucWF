@@ -241,20 +241,20 @@ build_interactive_allele_network <- function(graph) {
 # build allele network for two generations at a time, don't need to over complicate it. Can detect mutations and recombination in generation N based on generation N-1
 build_allele_network <- function(sample_meta, generation_num, population_num) {
   subset_sample_meta <- subset(sample_meta, (generation == generation_num | generation == generation_num + 1) & population_id == population_num) 
-  profiles <- vapply(subset_sample_meta$mut_sig, normalise_profile, character(1L))
+  mut_sig <- vapply(subset_sample_meta$mut_sig, normalise_profile, character(1L))
 
   nodes <- subset_sample_meta %>%
-    mutate(profile = profiles) %>%
-    group_by(population_id, generation, profile) %>%
+    mutate(mut_sig = profiles) %>%
+    group_by(population_id, generation, mut_sig) %>%
     summarise(
       count = n(),
       genome_ids = paste(sort(genome_id), collapse = ","),
       .groups = "drop"
     ) %>%
-    arrange(population_id, generation, profile) %>%
+    arrange(population_id, generation, mut_sig) %>%
     mutate(name = paste0("node_", row_number())) %>%
     select(name, everything())
-  mutations <- lapply(nodes$profile, function(sig) {
+  mutations <- lapply(nodes$mut_sig, function(sig) {
     if (!nzchar(sig)) character(0L) else strsplit(sig, ";", fixed = TRUE)[[1L]]
   })
   
@@ -297,6 +297,7 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
   graph <- igraph::graph_from_data_frame(edges, directed = TRUE, vertices = nodes)
   
   # classification of types
+  # TODO also need to identify whether the previous generation was a migrant (migrant de novo) as well as recombinant (recombinant de novo)
   types <- rep("unresolved", nrow(nodes))
   for (i in seq_len(nrow(nodes))) {
     if (nodes$generation[i] != generation_num + 1L) next
@@ -324,154 +325,14 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
   htmlwidgets::saveWidget(interactive_network, file = paste0(outpref, "_allele_network.html"),
                           selfcontained = FALSE)
   
+  network_haplotypes <- igraph::as_data_frame(graph, what = "vertices")
   
+  sample_meta_current_gen <- merge(subset_sample_meta[subset_sample_meta$generation == generation_num + 1, ], network_haplotypes[, c("mut_sig", "generation", "type")], by=c("mut_sig", "generation"))
+  
+  sample_meta <<- merge(sample_meta, sample_meta_current_gen[, c("sample", "mut_sig", "generation", "type")], by=c("sample", "mut_sig", "generation"), all.x = TRUE)
 }
 
-
-
-#TODO - issue here is that I am trying to reinvent the wheel. Perhaps there is some tool e.g. pegas that can help with identifying haplotype networks, from this I can infer ancestry and recombination?
-
-build_allele_network <- function(sample_meta) {
-  profiles <- vapply(sample_meta$mut_sig, normalise_profile, character(1L))
-
-  nodes <- sample_meta %>%
-    mutate(profile = profiles) %>%
-    group_by(population_id, generation, profile) %>%
-    summarise(
-      count = n(),
-      genome_ids = paste(sort(genome_id), collapse = ","),
-      .groups = "drop"
-    ) %>%
-    arrange(population_id, generation, profile) %>%
-    mutate(name = paste0("node_", row_number())) %>%
-    select(name, everything())
-  mutations <- lapply(nodes$profile, function(sig) {
-    if (!nzchar(sig)) character(0L) else strsplit(sig, ";", fixed = TRUE)[[1L]]
-  })
-
-  edge_list <- list()
-  for (pop in unique(nodes$population_id)) {
-    pop_nodes <- which(nodes$population_id == pop)
-    for (gen in unique(nodes$generation[pop_nodes])) {
-      previous <- pop_nodes[nodes$generation[pop_nodes] == gen - 1L]
-      current <- pop_nodes[nodes$generation[pop_nodes] == gen]
-      if (length(previous) == 0L) next
-
-      previous_snps <- unlist(mutations[previous], use.names = FALSE)
-      previous_index <- split(rep(previous, lengths(mutations[previous])), previous_snps)
-      for (child in current) {
-        child_snps <- mutations[[child]]
-        candidate_indices <- unique(unlist(previous_index[mutations[[child]]], use.names = FALSE))
-        for (parent in candidate_indices) {
-          shared <- intersect(mutations[[parent]], mutations[[child]])
-
-          # ensure strict gain of mutations, meaning child must be same length or more than parent
-          if (length(child_snps) < length(mutations[[parent]])) {
-            next
-          }
-
-          edge_list[[length(edge_list) + 1L]] <- data.frame(
-            from = nodes$name[parent],
-            to = nodes$name[child],
-            shared_alleles = paste(shared, collapse = ";"),
-            n_shared_alleles = length(shared),
-            stringsAsFactors = FALSE
-          )
-        }
-      }
-    }
-  }
-
-  edges <- if (length(edge_list) > 0L) {
-    bind_rows(edge_list)
-  } else {
-    data.frame(from = character(), to = character(), shared_alleles = character(),
-               n_shared_alleles = integer(), stringsAsFactors = FALSE)
-  }
-  graph <- igraph::graph_from_data_frame(edges, directed = TRUE, vertices = nodes)
-
-  # Profile origins and edges are inferred from observations, not a pedigree.
-  origins <- nodes %>%
-    arrange(generation, population_id) %>%
-    group_by(profile) %>%
-    slice_head(n = 1L) %>%
-    ungroup()
-  origin_index <- match(nodes$profile, origins$profile)
-  source_populations <- origins$population_id[origin_index]
-  first_generations <- ave(nodes$generation, nodes$population_id, FUN = min)
-  types <- rep("unresolved", nrow(nodes))
-  migrant_lineage <- rep(FALSE, nrow(nodes))
-  parent_nodes <- rep("", nrow(nodes))
-  source_nodes <- rep("", nrow(nodes))
-  generation_key <- paste(nodes$population_id, nodes$generation, sep = ":")
-  generation_nodes <- split(seq_len(nrow(nodes)), generation_key)
-  generation_alleles <- lapply(generation_nodes, function(indices) {
-    unique(unlist(mutations[indices], use.names = FALSE))
-  })
-  for (i in order(nodes$generation, nodes$population_id, nodes$name)) {
-    current_haplotype <- nodes$profile[i]
-    parents <- as.integer(igraph::neighbors(graph, i, mode = "in"))
-    previous_key <- paste(nodes$population_id[i], nodes$generation[i] - 1L, sep = ":")
-    previous <- generation_nodes[[previous_key]]
-    identical_parent <- previous[nodes$profile[previous] == current_haplotype]
-    mutation_parent <- integer()
-    if (length(identical_parent) == 0L && length(parents) > 0L) {
-      previous_alleles <- generation_alleles[[previous_key]]
-      inherited <- intersect(mutations[[i]], previous_alleles)
-      novel <- setdiff(mutations[[i]], previous_alleles)
-      if (length(novel) > 0L) {
-        mutation_parent <- parents[vapply(parents, function(parent) {
-          setequal(mutations[[parent]], inherited)
-        }, logical(1L))]
-      }
-    }
-    selected_parents <- if (length(identical_parent) > 0L) {
-      identical_parent
-    } else if (length(mutation_parent) == 1L) {
-      mutation_parent
-    } else {
-      parents
-    }
-    parent_lineages <- migrant_lineage[selected_parents]
-    is_migrant <- nodes$population_id[i] != source_populations[i]
-    migrant_lineage[i] <- is_migrant || any(parent_lineages)
-    if (is_migrant) {
-      source_nodes[i] <- origins$name[origin_index[i]]
-    } else if (length(identical_parent) > 0L) {
-      parent_nodes[i] <- parent_nodes[identical_parent[1L]]
-      source_nodes[i] <- source_nodes[identical_parent[1L]]
-    } else {
-      parent_nodes[i] <- paste(nodes$name[selected_parents], collapse = ";")
-      inherited_sources <- unlist(strsplit(source_nodes[selected_parents], ";", fixed = TRUE),
-                                  use.names = FALSE)
-      source_nodes[i] <- paste(unique(inherited_sources[nzchar(inherited_sources)]),
-                               collapse = ";")
-    }
-
-    types[i] <- if (is_migrant) {
-      "migrant"
-    } else if (length(identical_parent) > 0L) {
-      types[identical_parent[1L]]
-    } else if (length(selected_parents) >= 2L) {
-      if (any(parent_lineages) && any(!parent_lineages)) "migrant-recombinant" else "recombinant"
-    } else if (length(selected_parents) == 1L) {
-      if (parent_lineages[1L]) "migrant-de-novo" else "mutant"
-    } else if (nodes$generation[i] == first_generations[i]) {
-      "founder"
-    } else if (length(selected_parents) == 0L) {
-      "mutant"
-    }
-    else {
-      "unresolved"
-    }
-  }
-  igraph::V(graph)$type <- types
-  igraph::V(graph)$origin_population_id <- source_populations
-  igraph::V(graph)$migrant_lineage <- migrant_lineage
-  igraph::V(graph)$parent_nodes <- parent_nodes
-  igraph::V(graph)$source_nodes <- source_nodes
-  graph
-}
+sample_meta$mut_sig[is.na(sample_meta$mut_sig)] <- ""
 
 allele_network <- build_allele_network(sample_meta)
 saveRDS(allele_network, paste0(outpref, "_allele_network.rds"))
