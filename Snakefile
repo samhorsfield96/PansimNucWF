@@ -112,9 +112,7 @@ rule all:
             f"{OUTPUT_DIR}/gene_freq/gene_frequencies_distribution.csv",
             f"{OUTPUT_DIR}/gene_freq/gene_frequencies_per_gene.csv"
         ] if IS_SIMULATED else []),
-        *([
-            f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv"
-        ] PLOT_HAPLOTYPES else []),
+        *([f"{OUTPUT_DIR}/pegas/haplotype_summary.tsv"] if PLOT_HAPLOTYPES else []),
         *([f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_summary.csv",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_freq.pdf",
             f"{OUTPUT_DIR}/haplotypes/haplotypes_haplotype_composition.pdf",

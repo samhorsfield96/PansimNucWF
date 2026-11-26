@@ -13,5 +13,8 @@ dependencies:
   - r-gggenomes
   - r-ggnewscale
   - r-vcfr
+  - r-igraph
+  - r-networkd3
+  - r-htmlwidgets
   - r-data.table
   - r-r.utils
