@@ -245,13 +245,13 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
   
   nodes <- subset_sample_meta %>%
     mutate(mut_sig = mut_sig) %>%
-    group_by(population_id, generation, mut_sig, source_populations) %>%
+    group_by(population_id, generation, mut_sig, source_populations, migrant) %>%
     summarise(
       count = n(),
       genome_ids = paste(sort(genome_id), collapse = ","),
       .groups = "drop"
     ) %>%
-    arrange(population_id, generation, mut_sig, source_populations) %>%
+    arrange(population_id, generation, mut_sig, source_populations, migrant) %>%
     mutate(name = paste0("node_", row_number())) %>%
     select(name, everything())
   mutations <- lapply(nodes$mut_sig, function(sig) {
@@ -320,10 +320,15 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
         any(!(parent_alleles[[j]] %in% other_alleles))
       }, logical(1L))
       
+      # If no unique contributors, take the longest parent, breaking ties by order.
+      if (length(parents) > 0L && !any(unique_contributors)) {
+        unique_contributors[which.max(lengths(mutations[parents]))] <- TRUE
+      }
+      
       parent_lineages <- FALSE
       if (sum(unique_contributors) > 0) {
-        parent_ids[i] <- list(subset_sample_meta$sample[parents[unique_contributors]])
-        parent_lineages <- subset_sample_meta$migrant[parents[unique_contributors]]
+        parent_ids[i] <- list(nodes$genome_ids[parents[unique_contributors]])
+        parent_lineages <- nodes$migrant[parents[unique_contributors]]
       }
       migrant[i] <- is_migrant || any(parent_lineages)
       
