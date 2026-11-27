@@ -220,8 +220,8 @@ build_interactive_allele_network <- function(graph) {
   widget$x$nodes$details <- paste0(
     nodes$label, "\nType: ", nodes$type, "\nGenomes: ", nodes$genome_ids,
     "\nOrigin population: ", nodes$origin_population_id,
-    "\nMigrant lineage: ", nodes$migrant_lineage,
-    "\nAlleles: ", ifelse(nzchar(nodes$profile), nodes$profile, "(none)")
+    "\nMigrant lineage: ", nodes$migrant,
+    "\nAlleles: ", ifelse(nzchar(nodes$mut_sig), nodes$mut_sig, "(none)")
   )
   widget$x$links$details <- if (nrow(edges) > 0L) {
     paste0("Shared alleles: ", edges$shared_alleles)
@@ -322,7 +322,7 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
       
       parent_lineages <- FALSE
       if (sum(unique_contributors) > 0) {
-        parent_ids[i] <- subset_sample_meta$sample[parents[unique_contributors]]
+        parent_ids[i] <- list(subset_sample_meta$sample[parents[unique_contributors]])
         parent_lineages <- subset_sample_meta$migrant[parents[unique_contributors]]
       }
       migrant[i] <- is_migrant || any(parent_lineages)
@@ -333,10 +333,10 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
     }
   }
   igraph::V(graph)$type <- types
-  igraph::V(graph)$parent_ids <- parent_ids
   igraph::V(graph)$migrant <- migrant
-  
+  igraph::V(graph)$parent_ids <- parent_ids
   interactive_network <- build_interactive_allele_network(graph)
+  
   htmlwidgets::saveWidget(interactive_network, file = paste0(outpref, "_allele_network.html"),
                           selfcontained = FALSE)
   
