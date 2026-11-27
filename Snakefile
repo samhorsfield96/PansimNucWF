@@ -217,7 +217,7 @@ rule merge_vcfs:
             "vcf_list=$sample_dir/sample_vcf_list.txt && "
             "trap 'rm -f \"$vcf_list\"' EXIT && "
             "ls -1 \"$sample_dir\" | awk -v dir=\"$sample_dir/\" '/[.]vcf[.]gz$/ {{print dir $0}}' > \"$vcf_list\" && "
-            "bcftools merge --force-samples -Oz -o {output.vcf:q} --file-list \"$vcf_list\" && "
+            "bcftools merge --force-samples -Oz -o {output.vcf:q} -l \"$vcf_list\" && "
             "tabix -p vcf {output.vcf}"
         )
 
