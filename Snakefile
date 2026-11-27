@@ -206,12 +206,18 @@ rule merge_vcfs:
     output:
         vcf=f"{OUTPUT_DIR}/variants/raw_variants.vcf.gz",
         tbi=f"{OUTPUT_DIR}/variants/raw_variants.vcf.gz.tbi",
+    params:
+        sample_dir=f"{OUTPUT_DIR}/variants/per_sample",
     conda:
         "envs/variants.yaml"
     shell:
         (
             f"mkdir -p {OUTPUT_DIR}/variants && "
-            "bcftools merge --force-samples -Oz -o {output.vcf} {input.vcfs} && "
+            "sample_dir={params.sample_dir:q} && "
+            "vcf_list=$sample_dir/sample_vcf_list.txt && "
+            "trap 'rm -f \"$vcf_list\"' EXIT && "
+            "ls -1 \"$sample_dir\" | awk -v dir=\"$sample_dir/\" '/[.]vcf[.]gz$/ {{print dir $0}}' > \"$vcf_list\" && "
+            "bcftools merge --force-samples -Oz -o {output.vcf:q} --file-list \"$vcf_list\" && "
             "tabix -p vcf {output.vcf}"
         )
 
