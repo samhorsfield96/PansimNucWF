@@ -334,7 +334,17 @@ build_allele_network <- function(sample_meta, generation_num, population_num) {
       
       types[i] <- if (sum(unique_contributors) >= 2L) "recombinant" else "mutant"
       
-      # TODO need to separate recombinant from migrant recombinant, where migrant and non-migrant recombine?
+      # now assign final type. Logic is
+      # if no mutations -> reference
+      # if found at first generation of population split in new population -> founder
+      # if is_migrant, means it has arisen previously in previous generation -> migrant
+      # if !is_migrant, has one parent which is not migrant -> mutant
+      # if !is_migrant, and has two or more parents which are not migrants -> extant-recombinant
+      # if !is_migrant, has two or more parents, some but not all are migrants -> migrant-extant-recombinant
+      # if !is_migrant, has two or more parents, all of which are migrants -> migrant-recombinant
+      # need to track recombinant lineages, therefore if any of previous ancestors are recombinant -> X-recombinant-mutant
+      
+      # TODO add new type logic
     }
   }
   igraph::V(graph)$type <- types
